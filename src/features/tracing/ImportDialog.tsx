@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { defaultTrace, makeMask, rasterize } from "./trace";
 import type { Raster, TraceOptions } from "./trace";
 import type { Glyph } from "../../core/model";
+import { createTraceWorker } from "./createTraceWorker";
 import { Icon } from "../../shared/components/Icon";
 
 export function ImportDialog({
@@ -63,9 +64,7 @@ export function ImportDialog({
     if (!raster || busy) return;
     setBusy(true);
     setError("");
-    worker.current = new Worker(new URL("./trace.worker.ts", import.meta.url), {
-      type: "module",
-    });
+    worker.current = createTraceWorker();
     worker.current.onmessage = (e) => {
       setBusy(false);
       worker.current?.terminate();

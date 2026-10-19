@@ -17,6 +17,7 @@ npm run dev
 
 - `npm run dev`：启动开发服务，支持热更新。
 - `npm run build`：检查 TypeScript 类型并打包到 `dist/`。
+- `npm run build:offline`：生成 `dist/offline/Coinage.html`，双击即可离线使用，无需服务器。脚本、样式、示例图片与描摹 Worker 均内嵌，只需分发这一个 HTML 文件。
 - `npm run preview`：本地预览打包结果，需先运行构建。
 - `npm test`：运行骨架提取、共享节点、闭环、宽度、曲线、SVG 导出与数据校验测试。
 
@@ -57,6 +58,8 @@ npm run dev
 
 数据自动保存在当前浏览器的 localStorage；刷新后恢复。清理浏览器数据会清除本地手稿，存储不足时界面会提示导出。可用 JSON 手稿备份、转移，并通过手稿菜单重新打开。撤销记录保留最近 60 步，仅在当前会话有效。
 
+离线 HTML 建议使用 Chrome 或 Edge 打开。离线文件与开发地址的浏览器存储相互独立，移动或重命名 HTML 文件也可能影响本地手稿的读取；迁移前请导出 JSON 手稿，再在新位置导入。运行普通 `npm run build` 会清理 `dist/`，需要离线文件时请随后重新运行 `npm run build:offline`。
+
 图片处理完全在本机进行：最长边缩放至 360 像素进行前景识别，去除小连通区域，通过 Zhang–Suen 细化提取中心线，以距离场估计宽度，再将图结构简化为可编辑路径。转换在 Web Worker 中执行。导出根据这些路径、控制柄和宽度重建闭合轮廓，不嵌入原始位图。
 
 自动提取是中心线重建，不是逐像素轮廓复刻；尖锐交汇、复杂纹理、书法飞白和细小笔画可能需要调整阈值或手动修整。建议使用清晰、前景与背景对比明显的图片。目前导出独立 SVG 字形，不生成 TTF/OTF 字体文件。
@@ -65,7 +68,7 @@ npm run dev
 
 - `src/app/`：`App.tsx` 组装工作台并管理菜单、字符切换与弹窗状态；`App.css` 仅提供提示动画关键帧。
 - `src/features/editor/`：`EditorCanvas.tsx` 管理视口与工具栏，`useCanvasInteraction.ts` 管理钢笔和拖拽历史，`GlyphArtwork.tsx` 渲染字形与节点；`GlyphSidebar.tsx` 管理字符/笔画列表，`useEditorCommands.ts` 管理编辑命令与快捷键，另含属性面板、右键菜单与字形预览。
-- `src/features/tracing/`：图片导入、前景分离、骨架提取与转换 Worker。
+- `src/features/tracing/`：图片导入、前景分离、骨架提取与转换 Worker；`createTraceWorker.ts` 用于标准网页构建，离线构建通过别名使用 `createTraceWorker.offline.ts` 内嵌 Worker。
 - `src/features/project/`：`useProject.ts` 管理手稿状态、撤销重做与本地保存；`useProjectFiles.ts` 管理文件读取、导入和导出。
 - `src/core/`：`model.ts` 定义数据类型与工厂，`geometry.ts` 计算中心线与填充轮廓，`svg.ts` 输出 SVG 文档，`validation.ts` 校验手稿，`demo.ts` 提供初始示例，`brush.ts` 定义笔锋配置与端部轮廓。调用方直接导入对应模块。
 - `src/shared/`：通用控件、图标与文件工具。`components/controls.tsx` 复用按钮和分段选择的 Tailwind 状态类；`components/RangeInput.tsx` 统一滑块样式与原生事件透传，其 CSS 仅处理浏览器滑块伪元素。

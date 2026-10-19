@@ -1,4 +1,5 @@
 import "./App.css";
+import referenceUrl from "../../public/reference.png?inline";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { emptyGlyph } from "../core/model";
 import type { Point } from "../core/model";
@@ -190,7 +191,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={() => {
-                    setSource({ src: "/reference.png", name: "示例字形.png" });
+                    setSource({ src: referenceUrl, name: "示例字形.png" });
                     setMenu(null);
                   }}
                 >

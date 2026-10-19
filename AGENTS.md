@@ -36,6 +36,8 @@ src/
 │   ├── tracing/
 │   │   ├── ImportDialog.tsx    # 图片导入与识别参数预览
 │   │   ├── trace.ts            # 前景分离、骨架提取、路径简化与图片读取
+│   │   ├── createTraceWorker.ts # 标准网页 Worker 工厂
+│   │   ├── createTraceWorker.offline.ts # 离线包内嵌 Worker 工厂
 │   │   └── trace.worker.ts     # 后台转换入口
 │   └── project/
 │       ├── useProject.ts      # 手稿状态、撤销重做和本地保存
@@ -69,4 +71,5 @@ tests/core.test.ts              # 几何、描摹、导出与数据校验测试
 - 手稿级笔锋存于 `Project.brush`，所有笔画统一使用全局配置，锁定仅保护几何和连接关系；全局修改通过 `changeGlobalBrush`，加载与导入通过 `migrateProjectBrush` 清理旧的局部笔锋字段。画布、缩略图和导出均传入全局配置。
 - 保持 `coinage.studio.v1` 本地存储和 `Project.version` 的兼容性；修改数据格式时同步更新校验并处理旧手稿迁移。
 - 描摹计算放在 Worker 中；保留 `new Worker(new URL("./trace.worker.ts", import.meta.url), { type: "module" })` 的 Vite 打包方式。SVG 导出使用真实路径。
+- 离线构建使用 `npm run build:offline`，输出 `dist/offline/Coinage.html`；仅此构建将 Worker 工厂替换为 `?worker&inline` 版本。运行时资源须使用可打包的导入，不能写死根路径或依赖网络；保留标准网页构建。
 - 保留已有素材及其文件名；未经需求授权，不引入后端或上传用户图片。
