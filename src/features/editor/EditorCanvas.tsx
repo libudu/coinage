@@ -74,6 +74,9 @@ export function EditorCanvas({
   const visibleIds = new Set(
     glyph.strokes.filter((s) => s.visible).flatMap((s) => s.nodes),
   );
+  const outlines = glyph.strokes
+    .filter((s) => s.visible)
+    .map((s) => ({ stroke: s, path: outlinePath(glyph, s) }));
   if (penTail.current && glyph.nodes[penTail.current])
     visibleIds.add(penTail.current);
   const nodeLocked = (id: string) =>
@@ -672,23 +675,26 @@ export function EditorCanvas({
               />
             )}
             <g fill={glyph.color}>
-              {glyph.strokes
-                .filter((s) => s.visible)
-                .map((s) => (
-                  <path
-                    key={s.id}
-                    d={outlinePath(glyph, s)}
-                    className={s.locked ? "locked-stroke" : "editable-stroke"}
-                    onPointerDown={(e) => {
-                      if (tool === "pen" || preview) {
-                        canvasDown(e);
-                        return;
-                      }
-                      start(e, "stroke", s.id);
-                    }}
-                    onDoubleClick={(e) => insert(e, s)}
-                  />
-                ))}
+              <path
+                d={outlines.map(({ path }) => path).join(" ")}
+                pointerEvents="none"
+              />
+              {outlines.map(({ stroke: s, path }) => (
+                <path
+                  key={s.id}
+                  d={path}
+                  fill="transparent"
+                  className={s.locked ? "locked-stroke" : "editable-stroke"}
+                  onPointerDown={(e) => {
+                    if (tool === "pen" || preview) {
+                      canvasDown(e);
+                      return;
+                    }
+                    start(e, "stroke", s.id);
+                  }}
+                  onDoubleClick={(e) => insert(e, s)}
+                />
+              ))}
             </g>
             {!preview && nodesVisible && (
               <g>

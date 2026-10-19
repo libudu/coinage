@@ -5,12 +5,100 @@ import {
   demoProject,
   emptyGlyph,
   exportSvg,
+  glyphPath,
   isProject,
   newStroke,
   outlinePath,
 } from "../src/core/model";
 import { defaultTrace, makeMask, traceRaster } from "../src/features/tracing/trace";
 import type { Raster } from "../src/features/tracing/trace";
+import type { Point } from "../src/core/model";
+
+// SVG's default nonzero fill rule, for checking the actual filled outline.
+function pathCoverage(path: string): (point: Point) => boolean {
+  const polygons = path.split("Z").map((subpath) =>
+    [...subpath.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)].map(
+      ([, x, y]) => ({ x: +x, y: +y }),
+    ),
+  );
+  return (point) => {
+    let winding = 0;
+    for (const vertices of polygons)
+      vertices.forEach((a, i) => {
+        const b = vertices[(i + 1) % vertices.length];
+        const cross =
+          (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+        if (a.y <= point.y && b.y > point.y && cross > 0) winding++;
+        if (a.y > point.y && b.y <= point.y && cross < 0) winding--;
+      });
+    return winding !== 0;
+  };
+}
+const containsPoint = (path: string, point: Point) => pathCoverage(path)(point);
+
+test("shared endpoints join like a continuous stroke for every cap and corner style", () => {
+  const g = emptyGlyph("connected zigzag");
+  [[260, 50], [120, 190], [350, 290], [100, 360], [350, 500]].forEach(
+    ([x, y], i) => {
+      const id = String(i);
+      g.nodes[id] = { id, x, y, width: 40 + i * 4, mode: "corner" };
+    },
+  );
+  const continuous = newStroke(Object.keys(g.nodes), 0);
+  for (const cap of ["butt", "round", "square"] as const) {
+    for (const join of ["miter", "round", "bevel"] as const) {
+      for (const reverse of [false, true]) {
+        continuous.cap = cap;
+        continuous.join = join;
+        g.strokes = continuous.nodes.slice(1).map((id, i) => {
+          const ids = [String(i), id];
+          return {
+            ...newStroke(reverse && i % 2 ? ids.reverse() : ids, i),
+            cap,
+            join,
+          };
+        });
+        const outlines = g.strokes.map((s) => pathCoverage(outlinePath(g, s)));
+        const combined = pathCoverage(glyphPath(g));
+        const expected = pathCoverage(outlinePath({ ...g, strokes: [continuous] }, continuous));
+        for (let y = 20.37; y < 540; y += 5)
+          for (let x = 40.37; x < 430; x += 5) {
+            const p = { x, y };
+            assert.equal(
+              outlines.some((contains) => contains(p)),
+              expected(p),
+              `${cap}/${join}, reversed=${reverse}, point=${x},${y}`,
+            );
+            assert.equal(combined(p), expected(p));
+          }
+      }
+    }
+  }
+});
+
+test("only visible shared endpoints affect joins, without changing project data", () => {
+  const g = emptyGlyph("junction");
+  g.nodes.a = { id: "a", x: 100, y: 100, width: 40, mode: "corner" };
+  g.nodes.b = { id: "b", x: 200, y: 100, width: 40, mode: "corner" };
+  g.nodes.c = { id: "c", x: 200, y: 200, width: 40, mode: "corner" };
+  const s = newStroke(["a", "b"], 0),
+    peer = newStroke(["b", "c"], 1);
+  g.strokes = [s, peer];
+  peer.locked = true;
+  const before = structuredClone(g);
+  assert.ok(containsPoint(outlinePath(g, s), { x: 210, y: 85 }));
+  assert.deepEqual(g, before);
+  g.nodes.b.join = "bevel";
+  assert.ok(!containsPoint(outlinePath(g, s), { x: 215, y: 85 }));
+  delete g.nodes.b.join;
+  peer.visible = false;
+  const isolated = outlinePath(g, s);
+  assert.ok(!containsPoint(isolated, { x: 205, y: 95 }));
+  peer.visible = true;
+  g.nodes.copy = { ...g.nodes.b, id: "copy" };
+  peer.nodes[0] = "copy";
+  assert.equal(outlinePath(g, s), isolated);
+});
 function raster(
   w: number,
   h: number,
@@ -125,7 +213,8 @@ test("SVG exports real paths, escapes names, and omits hidden strokes", () => {
   g.name = "<script>bad</script>";
   g.strokes[0].visible = false;
   const svg = exportSvg(g);
-  assert.equal((svg.match(/<path /g) || []).length, g.strokes.length - 1);
+  assert.equal((svg.match(/<path /g) || []).length, 1);
+  assert.ok(svg.includes(`d="${g.strokes.filter((s) => s.visible).map((s) => outlinePath(g, s)).join(" ")}"`));
   assert.ok(svg.includes("&lt;script&gt;"));
   assert.ok(!svg.includes("<image"));
   assert.ok(!svg.includes("<script>"));
