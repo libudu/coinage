@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { clamp, distance, uid } from "../../core/model";
+import { clamp, distance } from "../../core/geometry";
+import { uid } from "../../core/model";
 import type { Glyph, Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
 import type { IconName } from "../../shared/components/Icon";
@@ -181,7 +182,12 @@ export function EditorContextMenu({
   return (
     <div
       ref={menu}
-      className="editor-context-menu"
+      className="editor-context-menu fixed z-[60] w-[min(184px,_calc(100vw_-_16px))] max-h-[calc(100dvh_-_16px)]
+        overflow-auto p-[5px] bg-[var(--panel)] border [border-style:solid] border-[#dce3d3] rounded-[7px]
+        shadow-[0_8px_28px_#203d2226,_0_2px_6px_#203d2212] outline-none overscroll-contain [&>button]:flex
+        [&>button]:items-center [&>button]:gap-[9px] [&>button]:w-full [&>button]:h-[32px] [&>button]:py-0
+        [&>button]:px-[9px] [&>button]:rounded-[4px] [&>button]:text-left [&>button]:text-[12px]
+        [&>button]:text-[#53674b] [&>button:hover:not(:disabled)]:bg-[#edf3e4] [&>button:hover:not(:disabled)]:outline-offset-[-2px] [&>button:focus-visible]:bg-[#edf3e4] [&>button:focus-visible]:outline-offset-[-2px] [&>button.danger]:text-[#a44c3a]!"
       role="menu"
       aria-label={node ? "节点操作" : stroke ? "笔画操作" : "全局操作"}
       tabIndex={-1}

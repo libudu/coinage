@@ -1,4 +1,5 @@
-import { clamp, emptyGlyph, newStroke, uid } from "../../core/model";
+import { clamp } from "../../core/geometry";
+import { emptyGlyph, newStroke, uid } from "../../core/model";
 import type { Glyph, Point } from "../../core/model";
 export type TraceOptions = {
   threshold: number;

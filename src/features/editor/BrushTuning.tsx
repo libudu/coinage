@@ -1,7 +1,8 @@
+import { RangeInput } from "../../shared/components/RangeInput";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { brushSettingLimits, changeGlobalBrush, defaultBrush, defaultBrushSettings } from "../../core/brush";
 import type { BrushSettings } from "../../core/brush";
-import { clamp } from "../../core/model";
+import { clamp } from "../../core/geometry";
 import type { Project } from "../../core/model";
 import type { useProject } from "../project/useProject";
 
@@ -22,7 +23,7 @@ function BrushValue({ label, value, min, max, disabled, change }: {
   const [draft, setDraft] = useState(String(value));
   const [editing, setEditing] = useState(false);
   return (
-    <input type="number" aria-label={label} min={min} max={max} step={5}
+    <input className="w-[52px] min-w-0 border [border-style:solid] border-[#e2e8d9] rounded-[3px] py-[2px] px-[3px] bg-[#fcfdf8] text-[#345c29] text-[11px]" type="number" aria-label={label} min={min} max={max} step={5}
       value={editing ? draft : value} disabled={disabled}
       onFocus={() => {
         setDraft(String(value));
@@ -77,7 +78,9 @@ export function BrushTuning({ doc }: {
   const brush = doc.project.brush ?? defaultBrush;
 
   return (
-    <details className="brush-basic brush-tuning">
+    <details className="brush-basic brush-tuning mt-[12px] [&>summary]:cursor-pointer [&>summary]:text-[#748464]
+      [&>summary]:text-[10px] [&>summary:focus-visible]:[outline:2px_solid_#81a16d]
+      [&>summary:focus-visible]:outline-offset-[3px] [&[open]>summary]:mb-[8px]">
       <summary>笔锋微调</summary>
       {(["start", "end"] as const).map((end) => {
         const label = end === "start" ? "起笔" : "收笔";
@@ -87,9 +90,11 @@ export function BrushTuning({ doc }: {
         const disabled = tip === "none";
         const isDefault = settings.length === 100 && settings.spread === 100;
         return (
-          <fieldset className="brush-tuning-end" key={end}>
+          <fieldset className="brush-tuning-end min-w-0 mt-[10px] mx-0 mb-0 pt-[8px] px-[10px] pb-[10px] border [border-style:solid]
+            border-[#e2e8d9] rounded-[5px] [&>legend]:py-0 [&>legend]:px-[4px] [&>legend]:text-[#50713c]
+            [&>legend]:text-[11px]" key={end}>
             <legend>{label}</legend>
-            <div className="brush-tuning-actions">
+            <div className="brush-tuning-actions flex items-center justify-end text-[10px] text-[#748464] [&>button]:p-0 [&>button]:text-[10px]">
               <button disabled={isDefault}
                 aria-label={`恢复${label}默认笔锋`}
                 onClick={() => change(key, defaultBrushSettings)}>
@@ -110,8 +115,9 @@ export function BrushTuning({ doc }: {
                 update(Math.round(limits.min + fraction * (limits.max - limits.min)));
               };
               return (
-                <div className="brush-adjustment" key={setting}>
-                  <div className="brush-adjustment-label">
+                <div className="brush-adjustment mt-[8px] [&_input:disabled]:opacity-[0.4]" key={setting}>
+                  <div className="brush-adjustment-label flex items-center justify-between text-[10px] text-[#748464] [&>label]:flex
+                    [&>label]:items-center [&>label]:gap-[3px]">
                     <span>{name}</span>
                     <label>
                       <BrushValue label={`${label}${name}百分比`}
@@ -120,7 +126,7 @@ export function BrushTuning({ doc }: {
                       <span>%</span>
                     </label>
                   </div>
-                  <input type="range" aria-label={`${label}${name}`}
+                  <RangeInput variant="row" aria-label={`${label}${name}`}
                     min={limits.min} max={limits.max} step={1}
                     value={settings[setting]} disabled={disabled}
                     onPointerDown={(e) => {

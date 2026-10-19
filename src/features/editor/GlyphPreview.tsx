@@ -1,5 +1,5 @@
 import type { Glyph } from "../../core/model";
-import { glyphPath } from "../../core/model";
+import { glyphPath } from "../../core/geometry";
 import type { BrushDefaults } from "../../core/brush";
 
 export function GlyphPreview({ glyph, brush }: { glyph: Glyph; brush?: BrushDefaults }) {

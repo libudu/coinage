@@ -1,20 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  controls,
-  demoProject,
-  emptyGlyph,
-  exportSvg,
-  glyphPath,
-  isProject,
-  newStroke,
-  outlinePath,
-} from "../src/core/model";
+import { controls, glyphPath, outlinePath, tipIsConnected } from "../src/core/geometry";
+import { demoProject } from "../src/core/demo";
+import { emptyGlyph, newStroke } from "../src/core/model";
+import { exportSvg } from "../src/core/svg";
+import { isProject } from "../src/core/validation";
 import { defaultTrace, makeMask, traceRaster } from "../src/features/tracing/trace";
 import type { Raster } from "../src/features/tracing/trace";
 import type { Point, Project } from "../src/core/model";
 import { brushPresets, changeGlobalBrush, defaultBrush, migrateProjectBrush } from "../src/core/brush";
-import { tipIsConnected } from "../src/core/model";
 
 // SVG's default nonzero fill rule, for checking the actual filled outline.
 function pathCoverage(path: string): (point: Point) => boolean {

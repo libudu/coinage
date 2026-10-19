@@ -1,0 +1,23 @@
+/* Browser-specific thumbs are shared by every RangeInput variant. */
+.range-input::-webkit-slider-thumb {
+  appearance: none;
+  height: 11px;
+  width: 11px;
+  background: #73904f;
+  border: 2px solid #fbfdf6;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #a0b780;
+}
+
+.range-input-row::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+}
+
+.range-input-row::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fbfdf6;
+  border-radius: 50%;
+  background: #73904f;
+}

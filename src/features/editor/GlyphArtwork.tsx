@@ -1,0 +1,256 @@
+import { centerPath, distance, outlinePath } from "../../core/geometry";
+import type { Point } from "../../core/model";
+import type { BrushDefaults } from "../../core/brush";
+import type { EditorCanvasProps } from "./canvasTypes";
+import type { useCanvasInteraction } from "./useCanvasInteraction";
+
+type Props = Pick<
+  EditorCanvasProps,
+  "glyph" | "nodeId" | "strokeId" | "tool" | "showReference"
+> & {
+  brush?: BrushDefaults;
+  scale: number;
+  grid: boolean;
+  preview: boolean;
+  nodesVisible: boolean;
+  interaction: Pick<
+    ReturnType<typeof useCanvasInteraction>,
+    "start" | "canvasDown" | "insert" | "penTail" | "nodeLocked"
+  >;
+};
+
+export function GlyphArtwork({
+  glyph,
+  nodeId,
+  strokeId,
+  tool,
+  showReference,
+  brush,
+  scale,
+  grid,
+  preview,
+  nodesVisible,
+  interaction,
+}: Props) {
+  const { start, canvasDown, insert, penTail, nodeLocked } = interaction;
+  const node = nodeId ? glyph.nodes[nodeId] : undefined;
+  const stroke = glyph.strokes.find((s) => s.id === strokeId);
+  const visibleIds = new Set(
+    glyph.strokes.filter((s) => s.visible).flatMap((s) => s.nodes),
+  );
+  const outlines = glyph.strokes
+    .filter((s) => s.visible)
+    .map((s) => ({ stroke: s, path: outlinePath(glyph, s, brush) }));
+  if (penTail.current && glyph.nodes[penTail.current])
+    visibleIds.add(penTail.current);
+  let handle: Point | null = null;
+  if (node && node.mode !== "corner" && stroke) {
+    if (node.handle) handle = node.handle;
+    else {
+      const i = stroke.nodes.indexOf(node.id),
+        a = glyph.nodes[stroke.nodes[Math.max(0, i - 1)]],
+        b = glyph.nodes[stroke.nodes[Math.min(stroke.nodes.length - 1, i + 1)]],
+        len = distance(a, b) || 1;
+      handle = { x: ((b.x - a.x) / len) * 50, y: ((b.y - a.y) / len) * 50 };
+    }
+  }
+  const incomingHandle =
+    node?.mode === "smooth" && node.handleIn
+      ? node.handleIn
+      : handle
+        ? { x: -handle.x, y: -handle.y }
+        : null;
+  return (
+    <>
+      <defs>
+        <pattern
+          id="dot-grid"
+          width="20"
+          height="20"
+          patternUnits="userSpaceOnUse"
+        >
+          <circle cx="0" cy="0" r=".75" fill="#b7bdb4" />
+        </pattern>
+      </defs>
+      <rect width="640" height="640" fill="#fffefa" />
+      {grid && !preview && (
+        <g pointerEvents="none">
+          <rect
+            width="640"
+            height="640"
+            fill="url(#dot-grid)"
+            opacity=".65"
+          />
+          <rect
+            x="64"
+            y="64"
+            width="512"
+            height="512"
+            fill="none"
+            stroke="#cbd0c3"
+            strokeWidth=".8"
+            strokeDasharray="5 5"
+          />
+          <path
+            d="M320 0V640M0 320H640M64 64 576 576M576 64 64 576"
+            stroke="#d3d6ca"
+            strokeWidth=".65"
+            strokeDasharray="4 5"
+          />
+        </g>
+      )}
+      {glyph.reference && showReference && (
+        <image
+          href={glyph.reference}
+          width="640"
+          height="640"
+          opacity={glyph.referenceOpacity / 100}
+          pointerEvents="none"
+        />
+      )}
+      <g fill={glyph.color}>
+        <path
+          d={outlines.map(({ path }) => path).join(" ")}
+          pointerEvents="none"
+        />
+        {outlines.map(({ stroke: s, path }) => (
+          <path
+            key={s.id}
+            data-stroke-id={s.id}
+            d={path}
+            fill="transparent"
+            className={s.locked ? "locked-stroke" : "editable-stroke"}
+            onPointerDown={(e) => {
+              if (tool === "pen" || preview) {
+                canvasDown(e);
+                return;
+              }
+              start(e, "stroke", s.id);
+            }}
+            onDoubleClick={(e) => insert(e, s)}
+          />
+        ))}
+      </g>
+      {!preview && nodesVisible && (
+        <g>
+          {glyph.strokes
+            .filter((s) => s.visible)
+            .map((s) => (
+              <path
+                key={s.id}
+                d={centerPath(glyph, s)}
+                fill="none"
+                stroke={strokeId === s.id ? "#a8d99a" : "#6f9c85"}
+                strokeOpacity={strokeId === s.id ? 1 : 0.6}
+                strokeWidth={1 / scale}
+                strokeDasharray={
+                  strokeId === s.id
+                    ? undefined
+                    : `${3 / scale} ${3 / scale}`
+                }
+                pointerEvents="none"
+              />
+            ))}
+          {[...visibleIds].map((id) => {
+            const n = glyph.nodes[id];
+            if (!n) return null;
+            const selected = id === nodeId,
+              size = (selected ? 9 : 7) / scale;
+            return (
+              <g
+                key={id}
+                data-node-id={id}
+                className="node-target"
+                onPointerDown={(e) => start(e, "node", id)}
+              >
+                <circle
+                  cx={n.x}
+                  cy={n.y}
+                  r={10 / scale}
+                  fill="transparent"
+                />
+                {n.mode === "corner" ? (
+                  <rect
+                    x={n.x - size / 2}
+                    y={n.y - size / 2}
+                    width={size}
+                    height={size}
+                    rx={selected ? 1 / scale : 0}
+                    fill={selected ? "#c5ef91" : "#fffefa"}
+                    stroke={selected ? "#224f3d" : "#668677"}
+                    strokeWidth={1.4 / scale}
+                  />
+                ) : (
+                  <circle
+                    cx={n.x}
+                    cy={n.y}
+                    r={size / 2}
+                    fill={selected ? "#c5ef91" : "#fffefa"}
+                    stroke="#476e59"
+                    strokeWidth={1.5 / scale}
+                  />
+                )}
+              </g>
+            );
+          })}
+          {node && !nodeLocked(node.id) && visibleIds.has(node.id) && (
+            <g>
+              {handle &&
+                [-1, 1].map((sign) => {
+                  const h = sign < 0 ? incomingHandle! : handle!;
+                  return (
+                    <g key={sign}>
+                      <path
+                        d={`M${node.x},${node.y} L${node.x + h.x},${node.y + h.y}`}
+                        stroke="#739b69"
+                        strokeWidth={1 / scale}
+                      />
+                      <circle
+                        cx={node.x + h.x}
+                        cy={node.y + h.y}
+                        r={4 / scale}
+                        fill="#fffefa"
+                        stroke="#547a48"
+                        strokeWidth={1.3 / scale}
+                        className="handle-target"
+                        data-node-id={node.id}
+                        onPointerDown={(e) =>
+                          start(e, "handle", node.id, sign)
+                        }
+                      />
+                    </g>
+                  );
+                })}
+              <g
+                className="branch-handle"
+                data-node-id={node.id}
+                onPointerDown={(e) => start(e, "branch", node.id)}
+              >
+                <path
+                  d={`M${node.x + 6 / scale},${node.y - 6 / scale} l${20 / scale},${-20 / scale}`}
+                  stroke="#668b64"
+                  strokeDasharray={`${3 / scale} ${3 / scale}`}
+                  strokeWidth={1 / scale}
+                />
+                <circle
+                  cx={node.x + 32 / scale}
+                  cy={node.y - 32 / scale}
+                  r={10 / scale}
+                  fill="#f3f9e9"
+                  stroke="#72966c"
+                  strokeWidth={1 / scale}
+                />
+                <path
+                  d={`M${node.x + 28 / scale},${node.y - 32 / scale} h${8 / scale} M${node.x + 32 / scale},${node.y - 36 / scale} v${8 / scale}`}
+                  stroke="#426e46"
+                  strokeWidth={1.3 / scale}
+                />
+                <title>拖动加号，拉出新笔画</title>
+              </g>
+            </g>
+          )}
+        </g>
+      )}
+    </>
+  );
+}

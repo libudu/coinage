@@ -63,13 +63,13 @@ npm run dev
 
 ## 代码结构
 
-- `src/app/`：工作台组装、字符集、导入导出与快捷键。
-- `src/features/editor/`：画布交互、属性面板、右键操作菜单与字形预览。
+- `src/app/`：`App.tsx` 组装工作台并管理菜单、字符切换与弹窗状态；`App.css` 仅提供提示动画关键帧。
+- `src/features/editor/`：`EditorCanvas.tsx` 管理视口与工具栏，`useCanvasInteraction.ts` 管理钢笔和拖拽历史，`GlyphArtwork.tsx` 渲染字形与节点；`GlyphSidebar.tsx` 管理字符/笔画列表，`useEditorCommands.ts` 管理编辑命令与快捷键，另含属性面板、右键菜单与字形预览。
 - `src/features/tracing/`：图片导入、前景分离、骨架提取与转换 Worker。
-- `src/features/project/`：手稿状态、撤销重做与本地保存。
-- `src/core/`：共享数据结构、几何算法、SVG 输出与数据校验；`brush.ts` 定义笔锋预设与端部轮廓。
-- `src/shared/`：通用控件、图标与文件工具。
-- `src/styles/`：全局样式与响应式布局。
+- `src/features/project/`：`useProject.ts` 管理手稿状态、撤销重做与本地保存；`useProjectFiles.ts` 管理文件读取、导入和导出。
+- `src/core/`：`model.ts` 定义数据类型与工厂，`geometry.ts` 计算中心线与填充轮廓，`svg.ts` 输出 SVG 文档，`validation.ts` 校验手稿，`demo.ts` 提供初始示例，`brush.ts` 定义笔锋配置与端部轮廓。调用方直接导入对应模块。
+- `src/shared/`：通用控件、图标与文件工具。`components/controls.tsx` 复用按钮和分段选择的 Tailwind 状态类；`components/RangeInput.tsx` 统一滑块样式与原生事件透传，其 CSS 仅处理浏览器滑块伪元素。
+- 样式优先使用组件内的 Tailwind CSS 类。`src/styles/` 仅保留 `index.css` 中的 Tailwind 入口与断点变体，以及 `base.css` 中的全局规则；确需自定义 CSS 的画布纹理、组合光标就近放在 `src/features/editor/EditorCanvas.css`，由所属组件导入。
 - `src/static/`：文字与笔锋原始素材。
 - `tests/core.test.ts`：算法与数据完整性回归测试。
 

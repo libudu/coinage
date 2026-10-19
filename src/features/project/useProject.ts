@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { demoProject, isProject } from "../../core/model";
+import { demoProject } from "../../core/demo";
+import { isProject } from "../../core/validation";
 import { migrateProjectBrush } from "../../core/brush";
 import type { Glyph, Project } from "../../core/model";
 const KEY = "coinage.studio.v1";

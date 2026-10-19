@@ -1,49 +1,13 @@
+import "./EditorCanvas.css";
 import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as PE } from "react";
-import {
-  centerPath,
-  clamp,
-  controls,
-  distance,
-  newStroke,
-  outlinePath,
-  uid,
-} from "../../core/model";
-import type { Glyph, Knot, Point, Project, Stroke } from "../../core/model";
+import { clamp } from "../../core/geometry";
+import type { Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
 import { IconButton } from "../../shared/components/controls";
-import type { useProject } from "../project/useProject";
-export type Tool = "select" | "pen" | "branch" | "hand";
-type Drag = {
-  kind: "node" | "branch" | "handle" | "stroke" | "pan";
-  id?: string;
-  start: Point;
-  origin?: Point;
-  before: Project;
-  moved: boolean;
-  pan?: Point;
-  sign?: number;
-};
-type Props = {
-  doc: ReturnType<typeof useProject>;
-  glyph: Glyph;
-  nodeId: string | null;
-  strokeId: string | null;
-  select: (node: string | null, stroke?: string | null) => void;
-  tool: Tool;
-  setTool: (t: Tool) => void;
-  upload: () => void;
-  importFile: (f: File) => void;
-  toast: (s: string) => void;
-  showReference: boolean;
-  modalOpen: boolean;
-  toggleInspector: () => void;
-  openContextMenu: (
-    position: Point,
-    node: string | null,
-    stroke: string | null,
-  ) => void;
-};
+import type { EditorCanvasProps, Tool } from "./canvasTypes";
+import { GlyphArtwork } from "./GlyphArtwork";
+import { useCanvasInteraction } from "./useCanvasInteraction";
+
 export function EditorCanvas({
   doc,
   glyph,
@@ -59,7 +23,7 @@ export function EditorCanvas({
   modalOpen,
   toggleInspector,
   openContextMenu,
-}: Props) {
+}: EditorCanvasProps) {
   const [grid, setGrid] = useState(true),
     [nodesVisible, setNodesVisible] = useState(true),
     [preview, setPreview] = useState(false),
@@ -69,36 +33,34 @@ export function EditorCanvas({
     [space, setSpace] = useState(false),
     [dragOver, setDragOver] = useState(false);
   const stage = useRef<HTMLDivElement>(null),
-    svg = useRef<SVGSVGElement>(null),
-    drag = useRef<Drag | null>(null),
-    penTail = useRef<string | null>(null),
-    penStroke = useRef<string | null>(null);
+    svg = useRef<SVGSVGElement>(null);
   const [viewport, setViewport] = useState({ width: 800, height: 700 });
   const node = nodeId ? glyph.nodes[nodeId] : undefined,
     stroke = glyph.strokes.find((s) => s.id === strokeId),
     scale = fit * zoom;
-  const visibleIds = new Set(
-    glyph.strokes.filter((s) => s.visible).flatMap((s) => s.nodes),
-  );
-  const outlines = glyph.strokes
-    .filter((s) => s.visible)
-    .map((s) => ({ stroke: s, path: outlinePath(glyph, s, doc.project.brush) }));
-  if (penTail.current && glyph.nodes[penTail.current])
-    visibleIds.add(penTail.current);
-  const nodeLocked = (id: string) =>
-    glyph.strokes.some((s) => s.locked && s.nodes.includes(id));
+  const interaction = useCanvasInteraction({
+    doc,
+    glyph,
+    strokeId,
+    select,
+    tool,
+    toast,
+    space,
+    preview,
+    pan,
+    setPan,
+    stage,
+    svg,
+  });
+  const { start, move, end, canvasDown, drag } = interaction;
   const reset = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
   };
   useEffect(() => {
     reset();
-    penTail.current = null;
-    penStroke.current = null;
   }, [glyph.id]);
   useEffect(() => {
-    penTail.current = null;
-    penStroke.current = null;
     setPreview(false);
     if (tool !== "hand") setNodesVisible(true);
   }, [tool]);
@@ -152,8 +114,7 @@ export function EditorCanvas({
         setSpace(true);
       }
       if (e.key === "Escape") {
-        penTail.current = null;
-        penStroke.current = null;
+        interaction.finishPen();
         setTool("select");
         setPreview(false);
       }
@@ -187,302 +148,19 @@ export function EditorCanvas({
       window.removeEventListener("blur", blur);
     };
   }, [modalOpen, setTool]);
-  const point = (e: { clientX: number; clientY: number }): Point => {
-    const m = svg.current?.getScreenCTM();
-    if (!m) return { x: 0, y: 0 };
-    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
-    return { x: clamp(p.x, 0, 640), y: clamp(p.y, 0, 640) };
-  };
-  const start = (e: PE, kind: Drag["kind"], id?: string, sign?: number) => {
-    if (e.button !== 0 && e.button !== 1) return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (space || tool === "hand" || e.button === 1) kind = "pan";
-    if (kind === "pan") {
-      drag.current = {
-        kind,
-        start: { x: e.clientX, y: e.clientY },
-        before: doc.current.current,
-        moved: false,
-        pan,
-      };
-      stage.current?.setPointerCapture(e.pointerId);
-      return;
-    }
-    if (id && ["node", "handle", "branch"].includes(kind) && nodeLocked(id)) {
-      toast("请先解锁连接的笔画");
-      return;
-    }
-    if (kind === "node" && id) {
-      select(
-        id,
-        (stroke?.visible && stroke.nodes.includes(id)
-          ? stroke
-          : glyph.strokes.find((s) => s.nodes.includes(id!) && s.visible))?.id,
-      );
-      if (tool === "pen") {
-        const tail = penTail.current;
-        if (tail && tail !== id && glyph.nodes[tail]) {
-          const existing = glyph.strokes.find(
-              (s) =>
-                s.id === penStroke.current &&
-                !s.locked &&
-                s.nodes[s.nodes.length - 1] === tail,
-            ),
-            sid = existing?.id || uid(),
-            targetId = id;
-          doc.update((g) => {
-            if (existing)
-              g.strokes.find((s) => s.id === sid)!.nodes.push(targetId);
-            else
-              g.strokes.push({
-                ...newStroke([tail, targetId], g.strokes.length),
-                id: sid,
-              });
-          });
-          penStroke.current = sid;
-          select(targetId, sid);
-        } else penStroke.current = null;
-        penTail.current = id;
-        return;
-      }
-      if (tool === "branch" || e.altKey) kind = "branch";
-    }
-    const before = doc.current.current,
-      p = point(e),
-      origin = id ? glyph.nodes[id] : undefined;
-    if (kind === "branch" && id) {
-      const nid = uid(),
-        sid = uid(),
-        source = glyph.nodes[id];
-      doc.update((g) => {
-        g.nodes[nid] = {
-          ...source,
-          id: nid,
-          handle: undefined,
-          handleIn: undefined,
-        };
-        g.strokes.push({ ...newStroke([id!, nid], g.strokes.length), id: sid });
-      }, false);
-      id = nid;
-      select(nid, sid);
-    }
-    if (kind === "stroke" && id) {
-      const s = glyph.strokes.find((s) => s.id === id)!;
-      select(null, id);
-      if (s.locked || s.nodes.some(nodeLocked)) return;
-    }
-    drag.current = { kind, id, sign, start: p, origin, before, moved: false };
-    stage.current?.setPointerCapture(e.pointerId);
-  };
-  const move = (e: PE) => {
-    const d = drag.current;
-    if (!d) return;
-    if (d.kind === "pan") {
-      setPan({
-        x: d.pan!.x + e.clientX - d.start.x,
-        y: d.pan!.y + e.clientY - d.start.y,
-      });
-      return;
-    }
-    let p = point(e);
-    if (e.shiftKey && d.origin && ["node", "branch"].includes(d.kind)) {
-      const dx = p.x - d.origin.x,
-        dy = p.y - d.origin.y,
-        a = (Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI) / 4,
-        len = Math.hypot(dx, dy);
-      p = {
-        x: clamp(d.origin.x + Math.cos(a) * len, 0, 640),
-        y: clamp(d.origin.y + Math.sin(a) * len, 0, 640),
-      };
-    }
-    if (distance(p, d.start) > 1) d.moved = true;
-    if (d.kind === "node" || d.kind === "branch")
-      doc.update((g) => {
-        Object.assign(g.nodes[d.id!], p);
-      }, false);
-    if (d.kind === "handle")
-      doc.update((g) => {
-        const n = g.nodes[d.id!],
-          vector = { x: p.x - n.x, y: p.y - n.y },
-          len = Math.hypot(vector.x, vector.y) || 1;
-        if (n.mode === "symmetric") {
-          n.handle = {
-            x: vector.x * (d.sign || 1),
-            y: vector.y * (d.sign || 1),
-          };
-          n.handleIn = undefined;
-        } else if (d.sign === -1) {
-          const opposite = n.handle ? Math.hypot(n.handle.x, n.handle.y) : 50;
-          n.handleIn = vector;
-          n.handle = {
-            x: (-vector.x / len) * opposite,
-            y: (-vector.y / len) * opposite,
-          };
-        } else {
-          const opposite = n.handleIn
-            ? Math.hypot(n.handleIn.x, n.handleIn.y)
-            : n.handle
-              ? Math.hypot(n.handle.x, n.handle.y)
-              : 50;
-          n.handle = vector;
-          n.handleIn = {
-            x: (-vector.x / len) * opposite,
-            y: (-vector.y / len) * opposite,
-          };
-        }
-      }, false);
-    if (d.kind === "stroke")
-      doc.update((g) => {
-        const s = g.strokes.find((s) => s.id === d.id)!,
-          old = d.before.glyphs.find((g) => g.id === glyph.id)!,
-          originals = s.nodes.map((id) => old.nodes[id]);
-        const dx = clamp(
-            p.x - d.start.x,
-            -Math.min(...originals.map((n) => n.x)),
-            640 - Math.max(...originals.map((n) => n.x)),
-          ),
-          dy = clamp(
-            p.y - d.start.y,
-            -Math.min(...originals.map((n) => n.y)),
-            640 - Math.max(...originals.map((n) => n.y)),
-          );
-        s.nodes.forEach((id) => {
-          g.nodes[id].x = old.nodes[id].x + dx;
-          g.nodes[id].y = old.nodes[id].y + dy;
-        });
-      }, false);
-  };
-  const end = (e: PE, cancel = false) => {
-    const d = drag.current;
-    if (!d) return;
-    if (d.kind !== "pan") {
-      if (cancel || (d.kind === "branch" && !d.moved)) {
-        doc.replace(d.before, false);
-        select(null, null);
-      } else if (d.moved) doc.remember(d.before);
-    }
-    drag.current = null;
-    if (stage.current?.hasPointerCapture(e.pointerId))
-      stage.current.releasePointerCapture(e.pointerId);
-  };
-  const canvasDown = (e: PE) => {
-    if (e.button !== 0 && e.button !== 1) return;
-    if (space || tool === "hand" || e.button === 1) {
-      start(e, "pan");
-      return;
-    }
-    if (tool !== "pen" || preview) {
-      select(null, null);
-      return;
-    }
-    const p = point(e),
-      id = uid(),
-      tail =
-        penTail.current && glyph.nodes[penTail.current]
-          ? penTail.current
-          : null;
-    const existing = tail
-        ? glyph.strokes.find(
-            (s) =>
-              s.id === penStroke.current &&
-              !s.locked &&
-              s.nodes[s.nodes.length - 1] === tail,
-          )
-        : null,
-      sid = existing?.id || uid();
-    doc.update((g) => {
-      g.nodes[id] = {
-        ...p,
-        id,
-        width: tail ? g.nodes[tail].width : 40,
-        mode: "corner",
-      };
-      if (tail) {
-        if (existing) g.strokes.find((s) => s.id === sid)!.nodes.push(id);
-        else
-          g.strokes.push({
-            ...newStroke([tail, id], g.strokes.length),
-            id: sid,
-          });
-      }
-    });
-    penTail.current = id;
-    if (tail) penStroke.current = sid;
-    select(id, tail ? sid : null);
-  };
-  const insert = (e: React.MouseEvent, s: Stroke) => {
-    e.stopPropagation();
-    if (s.locked || tool !== "select") return;
-    const p = point(e);
-    let best = Infinity,
-      at = 1;
-    for (let i = 0; i < s.nodes.length - 1; i++) {
-      const a = glyph.nodes[s.nodes[i]],
-        b = glyph.nodes[s.nodes[i + 1]],
-        [c, d] = controls(
-          s.nodes.map((n) => glyph.nodes[n]),
-          i,
-        );
-      for (let j = 0; j <= 20; j++) {
-        const t = j / 20,
-          v = 1 - t,
-          q = {
-            x:
-              v ** 3 * a.x +
-              3 * v * v * t * c.x +
-              3 * v * t * t * d.x +
-              t ** 3 * b.x,
-            y:
-              v ** 3 * a.y +
-              3 * v * v * t * c.y +
-              3 * v * t * t * d.y +
-              t ** 3 * b.y,
-          };
-        if (distance(p, q) < best) {
-          best = distance(p, q);
-          at = i + 1;
-        }
-      }
-    }
-    const id = uid();
-    doc.update((g) => {
-      g.nodes[id] = {
-        ...p,
-        id,
-        width:
-          (g.nodes[s.nodes[at - 1]].width + g.nodes[s.nodes[at]].width) / 2,
-        mode: "corner",
-      };
-      g.strokes.find((item) => item.id === s.id)!.nodes.splice(at, 0, id);
-    });
-    select(id, s.id);
-  };
-  let handle: Point | null = null;
-  if (node && node.mode !== "corner" && stroke) {
-    if (node.handle) handle = node.handle;
-    else {
-      const i = stroke.nodes.indexOf(node.id),
-        a = glyph.nodes[stroke.nodes[Math.max(0, i - 1)]],
-        b = glyph.nodes[stroke.nodes[Math.min(stroke.nodes.length - 1, i + 1)]],
-        len = distance(a, b) || 1;
-      handle = { x: ((b.x - a.x) / len) * 50, y: ((b.y - a.y) / len) * 50 };
-    }
-  }
-  const incomingHandle =
-    node?.mode === "smooth" && node.handleIn
-      ? node.handleIn
-      : handle
-        ? { x: -handle.x, y: -handle.y }
-        : null;
   const rulerStep = scale > 1.2 ? 40 : scale > 0.6 ? 80 : 160,
     rulerValues = Array.from({ length: 61 }, (_, i) => (i - 20) * rulerStep);
   const rulerX = (viewport.width - 640 * scale) / 2 + 11 + pan.x - 22,
     rulerY = (viewport.height - 640 * scale) / 2 + pan.y - 22;
   return (
-    <main className="editor">
-      <div className="editor-topbar">
-        <div className="breadcrumb">
+    <main className="editor flex flex-col min-w-0 min-h-0 bg-[#f0f2eb]">
+      <div className="editor-topbar h-[51px] bg-[#f9faf5] border-b [border-bottom-style:solid] border-b-[var(--border)] flex
+        items-center justify-between gap-[10px] py-0 px-[24px] shrink-0 laptop:py-0 laptop:px-[17px] tablet:py-0
+        tablet:px-[12px] phone:py-0 phone:px-[10px]">
+        <div className="breadcrumb flex items-center gap-[12px] min-w-0 text-[#8c9486] text-[11px] [&_input]:w-[125px]
+          [&_input]:max-w-full [&_input]:bg-[transparent] [&_input]:[border:0] [&_input]:text-[11px]
+          [&_input]:text-[#4b5845] tablet:gap-[5px] tablet:[&_input]:w-[80px] tablet:[&>span]:hidden
+          tablet:[&>svg]:hidden phone:[&_input]:w-[65px] [&>svg]:[transform:rotate(-90deg)]">
           <span>字符集</span>
           <Icon name="chevron" size={12} />
           <input
@@ -495,22 +173,26 @@ export function EditorCanvas({
             }
           />
         </div>
-        <div className="view-actions">
+        <div className="view-actions flex gap-[5px] items-center [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
+          [&_.icon-button>svg]:w-[15px] [&_.icon-button>svg]:h-[15px] tablet:gap-[1px]
+          phone:[&_.mini-divider]:hidden phone:[&_.icon-button]:w-[25px]">
           <button
-            className="view-button inspector-toggle"
+            className="view-button inspector-toggle gap-[6px] items-center text-[11px] text-[#7a8671] py-[6px] px-[9px]
+              rounded-[4px] flex phone:p-[5px] phone:text-[10px] [&.active]:bg-[#e7eddf] [&.active]:text-[#385e3d]"
             onClick={toggleInspector}
           >
             <Icon name="settings" size={16} />
             属性
           </button>
           <button
-            className={`view-button ${preview ? "active" : ""}`}
+            className={`view-button ${preview ? "active" : ""} gap-[6px] items-center text-[11px] text-[#7a8671] py-[6px] px-[9px]
+              rounded-[4px] flex phone:p-[5px] phone:text-[10px] [&.active]:bg-[#e7eddf] [&.active]:text-[#385e3d]`}
             onClick={() => setPreview((v) => !v)}
           >
             <Icon name="eye" size={16} />
             预览
           </button>
-          <span className="mini-divider" />
+          <span className="mini-divider w-[1px] h-[17px] bg-[#dfe5d6] my-0 mx-[5px]" />
           <IconButton
             icon="grid"
             title="网格 G"
@@ -530,7 +212,8 @@ export function EditorCanvas({
       </div>
       <div
         ref={stage}
-        className={`canvas-stage tool-${tool} ${space ? "space-pan" : ""} ${dragOver ? "drag-over" : ""}`}
+        className={`canvas-stage tool-${tool} ${space ? "space-pan" : ""} ${dragOver ? "drag-over" : ""} relative flex-1
+          overflow-hidden min-h-0 touch-none bg-[#f0f2eb]`}
         onPointerMove={move}
         onPointerUp={(e) => end(e)}
         onPointerCancel={(e) => end(e, true)}
@@ -571,7 +254,9 @@ export function EditorCanvas({
         }}
       >
         <div
-          className="ruler ruler-horizontal"
+          className="ruler ruler-horizontal absolute z-[5] pointer-events-none text-[#a9b19d] bg-[#f2f4ed] flex justify-around
+            overflow-hidden h-[22px] left-[22px] right-0 top-0 border-b [border-bottom-style:solid] border-b-[#e3e7db]
+            items-start pt-[3px] [font:8px_ui-monospace,monospace]"
           aria-hidden="true"
           style={{
             backgroundPositionX: rulerX,
@@ -590,7 +275,9 @@ export function EditorCanvas({
           ))}
         </div>
         <div
-          className="ruler ruler-vertical"
+          className="ruler ruler-vertical absolute z-[5] pointer-events-none text-[#a9b19d] bg-[#f2f4ed] flex justify-around
+            overflow-hidden w-[22px] top-[22px] bottom-0 left-0 border-r [border-right-style:solid] border-r-[#e3e7db]
+            flex-col items-center [font:8px_ui-monospace,monospace] [&_span]:[writing-mode:vertical-rl] [&_span]:[transform:rotate(180deg)]"
           aria-hidden="true"
           style={{
             backgroundPositionY: rulerY,
@@ -608,8 +295,13 @@ export function EditorCanvas({
             </span>
           ))}
         </div>
-        <span className="ruler-origin" />
-        <div className="canvas-tools">
+        <span className="ruler-origin absolute top-0 left-0 w-[22px] h-[22px] border-r [border-right-style:solid]
+          border-r-[#e3e7db] border-b [border-bottom-style:solid] border-b-[#e3e7db] bg-[#f2f4ed] z-[6]" />
+        <div className="canvas-tools absolute top-[47px] left-[38px] z-[10] bg-[#fcfdf8] border [border-style:solid]
+          border-[#dfe5d6] p-[5px] rounded-[8px] shadow-[0_3px_8px_#35472806] flex flex-col gap-[6px]
+          [&_.icon-button]:w-[33px] [&_.icon-button]:h-[34px] [&_.icon-button]:rounded-[4px]
+          [&_.icon-button]:text-[#748369] laptop:left-[30px] tablet:left-[29px] tablet:top-[38px] tablet:p-[3px]
+          tablet:gap-[3px] tablet:[&_.icon-button]:w-[28px] tablet:[&_.icon-button]:h-[30px] phone:left-[26px] [&_.icon-button.active]:bg-[#dcecba]! [&_.icon-button.active]:text-[#3f5d2c]!">
           {(
             [
               { id: "select", icon: "cursor", label: "选择 V" },
@@ -630,230 +322,63 @@ export function EditorCanvas({
               onClick={() => setTool(t.id)}
             />
           ))}
-          <span className="tool-divider" />
+          <span className="tool-divider h-[1px] bg-[#e7ebdf] w-[23px] my-[3px] mx-auto" />
           <IconButton icon="image" title="导入图片" onClick={upload} />
         </div>
         <div
-          className="artboard-wrap"
+          className="artboard-wrap absolute top-[50%] left-[calc(50%_+_11px)] shadow-[0_3px_16px_#48513706]"
           style={{
             width: 640 * scale,
             height: 640 * scale,
             transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
           }}
         >
-          <div className="artboard-label">
+          <div className="artboard-label absolute top-[-23px] left-0 right-0 flex justify-between text-[10px] text-[#8d9880]
+            pointer-events-none gap-[15px] [&>span:last-child]:[font-family:ui-monospace,_monospace]
+            [&>span:last-child]:text-[9px] [&>span:last-child]:tracking-[0.5px] [&>span:first-child]:whitespace-nowrap
+            [&>span:first-child]:overflow-hidden [&>span:first-child]:text-ellipsis [&>span:last-child]:shrink-0
+            compact:text-[9px]">
             <span>{glyph.name}</span>
             <span>640 × 640</span>
           </div>
           <svg
             ref={svg}
-            className={`artboard ${preview ? "is-preview" : ""}`}
+            className={`artboard ${preview ? "is-preview" : ""} w-full h-full border [border-style:solid] border-[#d9dfcf] block overflow-visible touch-none`}
             viewBox="0 0 640 640"
             onPointerDown={canvasDown}
             aria-label="字形编辑画布"
           >
-            <defs>
-              <pattern
-                id="dot-grid"
-                width="20"
-                height="20"
-                patternUnits="userSpaceOnUse"
-              >
-                <circle cx="0" cy="0" r=".75" fill="#b7bdb4" />
-              </pattern>
-            </defs>
-            <rect width="640" height="640" fill="#fffefa" />
-            {grid && !preview && (
-              <g pointerEvents="none">
-                <rect
-                  width="640"
-                  height="640"
-                  fill="url(#dot-grid)"
-                  opacity=".65"
-                />
-                <rect
-                  x="64"
-                  y="64"
-                  width="512"
-                  height="512"
-                  fill="none"
-                  stroke="#cbd0c3"
-                  strokeWidth=".8"
-                  strokeDasharray="5 5"
-                />
-                <path
-                  d="M320 0V640M0 320H640M64 64 576 576M576 64 64 576"
-                  stroke="#d3d6ca"
-                  strokeWidth=".65"
-                  strokeDasharray="4 5"
-                />
-              </g>
-            )}
-            {glyph.reference && showReference && (
-              <image
-                href={glyph.reference}
-                width="640"
-                height="640"
-                opacity={glyph.referenceOpacity / 100}
-                pointerEvents="none"
-              />
-            )}
-            <g fill={glyph.color}>
-              <path
-                d={outlines.map(({ path }) => path).join(" ")}
-                pointerEvents="none"
-              />
-              {outlines.map(({ stroke: s, path }) => (
-                <path
-                  key={s.id}
-                  data-stroke-id={s.id}
-                  d={path}
-                  fill="transparent"
-                  className={s.locked ? "locked-stroke" : "editable-stroke"}
-                  onPointerDown={(e) => {
-                    if (tool === "pen" || preview) {
-                      canvasDown(e);
-                      return;
-                    }
-                    start(e, "stroke", s.id);
-                  }}
-                  onDoubleClick={(e) => insert(e, s)}
-                />
-              ))}
-            </g>
-            {!preview && nodesVisible && (
-              <g>
-                {glyph.strokes
-                  .filter((s) => s.visible)
-                  .map((s) => (
-                    <path
-                      key={s.id}
-                      d={centerPath(glyph, s)}
-                      fill="none"
-                      stroke={strokeId === s.id ? "#a8d99a" : "#6f9c85"}
-                      strokeOpacity={strokeId === s.id ? 1 : 0.6}
-                      strokeWidth={1 / scale}
-                      strokeDasharray={
-                        strokeId === s.id
-                          ? undefined
-                          : `${3 / scale} ${3 / scale}`
-                      }
-                      pointerEvents="none"
-                    />
-                  ))}
-                {[...visibleIds].map((id) => {
-                  const n = glyph.nodes[id];
-                  if (!n) return null;
-                  const selected = id === nodeId,
-                    size = (selected ? 9 : 7) / scale;
-                  return (
-                    <g
-                      key={id}
-                      data-node-id={id}
-                      className="node-target"
-                      onPointerDown={(e) => start(e, "node", id)}
-                    >
-                      <circle
-                        cx={n.x}
-                        cy={n.y}
-                        r={10 / scale}
-                        fill="transparent"
-                      />
-                      {n.mode === "corner" ? (
-                        <rect
-                          x={n.x - size / 2}
-                          y={n.y - size / 2}
-                          width={size}
-                          height={size}
-                          rx={selected ? 1 / scale : 0}
-                          fill={selected ? "#c5ef91" : "#fffefa"}
-                          stroke={selected ? "#224f3d" : "#668677"}
-                          strokeWidth={1.4 / scale}
-                        />
-                      ) : (
-                        <circle
-                          cx={n.x}
-                          cy={n.y}
-                          r={size / 2}
-                          fill={selected ? "#c5ef91" : "#fffefa"}
-                          stroke="#476e59"
-                          strokeWidth={1.5 / scale}
-                        />
-                      )}
-                    </g>
-                  );
-                })}
-                {node && !nodeLocked(node.id) && visibleIds.has(node.id) && (
-                  <g>
-                    {handle &&
-                      [-1, 1].map((sign) => {
-                        const h = sign < 0 ? incomingHandle! : handle!;
-                        return (
-                          <g key={sign}>
-                            <path
-                              d={`M${node.x},${node.y} L${node.x + h.x},${node.y + h.y}`}
-                              stroke="#739b69"
-                              strokeWidth={1 / scale}
-                            />
-                            <circle
-                              cx={node.x + h.x}
-                              cy={node.y + h.y}
-                              r={4 / scale}
-                              fill="#fffefa"
-                              stroke="#547a48"
-                              strokeWidth={1.3 / scale}
-                              className="handle-target"
-                              data-node-id={node.id}
-                              onPointerDown={(e) =>
-                                start(e, "handle", node.id, sign)
-                              }
-                            />
-                          </g>
-                        );
-                      })}
-                    <g
-                      className="branch-handle"
-                      data-node-id={node.id}
-                      onPointerDown={(e) => start(e, "branch", node.id)}
-                    >
-                      <path
-                        d={`M${node.x + 6 / scale},${node.y - 6 / scale} l${20 / scale},${-20 / scale}`}
-                        stroke="#668b64"
-                        strokeDasharray={`${3 / scale} ${3 / scale}`}
-                        strokeWidth={1 / scale}
-                      />
-                      <circle
-                        cx={node.x + 32 / scale}
-                        cy={node.y - 32 / scale}
-                        r={10 / scale}
-                        fill="#f3f9e9"
-                        stroke="#72966c"
-                        strokeWidth={1 / scale}
-                      />
-                      <path
-                        d={`M${node.x + 28 / scale},${node.y - 32 / scale} h${8 / scale} M${node.x + 32 / scale},${node.y - 36 / scale} v${8 / scale}`}
-                        stroke="#426e46"
-                        strokeWidth={1.3 / scale}
-                      />
-                      <title>拖动加号，拉出新笔画</title>
-                    </g>
-                  </g>
-                )}
-              </g>
-            )}
+            <GlyphArtwork
+              glyph={glyph}
+              nodeId={nodeId}
+              strokeId={strokeId}
+              tool={tool}
+              showReference={showReference}
+              brush={doc.project.brush}
+              scale={scale}
+              grid={grid}
+              preview={preview}
+              nodesVisible={nodesVisible}
+              interaction={interaction}
+            />
           </svg>
-          <div className="artboard-corner corner-tl" />
-          <div className="artboard-corner corner-br" />
+          <div className="artboard-corner corner-tl absolute w-[7px] h-[7px] pointer-events-none border-[#b8c3a7] border-solid top-0
+            left-0 [border-width:1px_0_0_1px]" />
+          <div className="artboard-corner corner-br absolute w-[7px] h-[7px] pointer-events-none border-[#b8c3a7] border-solid
+            bottom-0 right-0 [border-width:0_1px_1px_0]" />
         </div>
         {dragOver && (
-          <div className="drop-message">
+          <div className="drop-message absolute inset-[24px] z-[15] bg-[#eef5e5ee] border-[2px] [border-style:dashed]
+            border-[#91ac6e] rounded-[10px] flex items-center justify-center flex-col gap-[15px] text-[#42633a]
+            pointer-events-none text-[15px]">
             <Icon name="upload" size={32} />
             <span>松开以导入图片</span>
           </div>
         )}
-        <div className="canvas-bottom">
-          <div className="mode-indicator">
-            <span className="mode-dot" />
+        <div className="canvas-bottom absolute bottom-[23px] left-[43px] right-[24px] flex items-center justify-between
+          pointer-events-none tablet:left-[34px] tablet:right-[14px] phone:left-[29px] phone:right-[10px]">
+          <div className="mode-indicator flex items-center gap-[7px] text-[#839174] text-[10px] tablet:text-[9px] phone:text-[0px]">
+            <span className="mode-dot w-[5px] h-[5px] bg-[#8fa36b] rounded-[50%]" />
             {preview
               ? "预览模式"
               : tool === "select"
@@ -864,13 +389,17 @@ export function EditorCanvas({
                     ? "拉出笔画"
                     : "移动画布"}
           </div>
-          <div className="zoom-control">
+          <div className="zoom-control flex items-center bg-[#fcfdf8] border [border-style:solid] border-[#dfe5d6] rounded-[7px]
+            py-[3px] px-[4px] pointer-events-auto shadow-[0_2px_5px_#43502e03] [&_.icon-button]:w-[28px]
+            [&_.icon-button]:h-[27px] [&_.icon-button>svg]:w-[14px] [&_.icon-button>svg]:h-[14px] [&>span]:h-[16px]
+            [&>span]:w-[1px] [&>span]:bg-[#e3e8db] [&>span]:my-0 [&>span]:mx-[4px] tablet:p-[2px]
+            tablet:[&_.icon-button]:w-[23px]">
             <IconButton
               icon="minus"
               title="缩小"
               onClick={() => setZoom((z) => clamp(z / 1.2, 0.25, 4))}
             />
-            <button className="zoom-value" onClick={reset}>
+            <button className="zoom-value text-[#77866b] min-w-[43px] h-[26px] tablet:min-w-[35px] [font:10px_ui-monospace,monospace]" onClick={reset}>
               {Math.round(zoom * 100)}%
             </button>
             <IconButton
@@ -883,17 +412,20 @@ export function EditorCanvas({
           </div>
         </div>
       </div>
-      <footer className="editor-status">
+      <footer className="editor-status min-h-[33px] border-t [border-top-style:solid] border-t-[#dfe5d5] flex items-center
+        justify-between py-0 px-[21px] bg-[#f7f9f1] text-[#8d9882] text-[9px]
+        [font-family:ui-monospace,_'Microsoft_YaHei',_monospace] [&>span]:flex [&>span]:items-center
+        [&>span]:gap-[7px] compact:py-0 compact:px-[11px] compact:text-[8px] compact:[&>span]:gap-[4px]">
         <span>
-          <span className="status-green-dot" />
-          {glyph.strokes.length} 笔画<span className="status-separator">/</span>
+          <span className="status-green-dot inline-block w-[4px] h-[4px] rounded-[50%] bg-[#8eab70] shrink-0 mr-[1px]" />
+          {glyph.strokes.length} 笔画<span className="status-separator text-[#b6beac] py-0 px-[4px]">/</span>
           {Object.keys(glyph.nodes).length} 节点
         </span>
         <span>
           {node
             ? `X ${Math.round(node.x)}　Y ${Math.round(node.y)}`
             : "640 × 640 px"}
-          <span className="status-separator">·</span>SVG
+          <span className="status-separator text-[#b6beac] py-0 px-[4px]">·</span>SVG
         </span>
       </footer>
     </main>

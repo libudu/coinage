@@ -1,0 +1,101 @@
+@layer base {
+  :root {
+    font-family:
+      Inter,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      "PingFang SC",
+      "Microsoft YaHei",
+      sans-serif;
+    color: #313a33;
+    background: #f7f8f4;
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+    --border: #e5e7df;
+    --panel: #fafbf7;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    min-width: 760px;
+  }
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+  button {
+    cursor: pointer;
+    color: inherit;
+    border: 0;
+    background: none;
+  }
+  button,
+  input {
+    outline: none;
+  }
+  button:focus-visible,
+  input:focus-visible {
+    outline: 2px solid #81a16d;
+    outline-offset: 3px;
+  }
+  button:disabled {
+    cursor: default;
+    opacity: 0.35;
+  }
+  button:not(:disabled),
+  input {
+    transition:
+      background 0.15s,
+      color 0.15s,
+      border-color 0.15s;
+  }
+
+  svg {
+    display: block;
+    flex-shrink: 0;
+  }
+  input[type="number"]::-webkit-inner-spin-button {
+    appearance: none;
+  }
+  input[type="number"] {
+    appearance: textfield;
+  }
+  input:disabled {
+    opacity: 0.55;
+  }
+  button {
+    touch-action: manipulation;
+  }
+  ::selection {
+    background: #d8edc6;
+  }
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #d2d7cb;
+    border-radius: 6px;
+  }
+}
+
+button:not(:disabled):hover {
+  color: #234c32;
+}
+
+@media (max-width: 760px) {
+  body {
+    min-width: 360px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

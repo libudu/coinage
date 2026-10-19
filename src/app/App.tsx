@@ -1,24 +1,18 @@
+import "./App.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  clamp,
-  centerPath,
-  emptyGlyph,
-  exportSvg,
-  isProject,
-  uid,
-} from "../core/model";
-import { migrateProjectBrush } from "../core/brush";
+import { emptyGlyph } from "../core/model";
 import type { Point } from "../core/model";
 import { Icon } from "../shared/components/Icon";
-import { GlyphPreview } from "../features/editor/GlyphPreview";
-import { IconButton } from "../shared/components/controls";
-import { download, safeName } from "../shared/utils/files";
+import { IconButton, buttonStateClasses } from "../shared/components/controls";
 import { ImportDialog } from "../features/tracing/ImportDialog";
 import { EditorCanvas } from "../features/editor/EditorCanvas";
-import type { Tool } from "../features/editor/EditorCanvas";
+import type { Tool } from "../features/editor/canvasTypes";
 import { EditorContextMenu } from "../features/editor/EditorContextMenu";
 import { Properties } from "../features/editor/Properties";
 import { useProject } from "../features/project/useProject";
+import { useProjectFiles } from "../features/project/useProjectFiles";
+import { useEditorCommands } from "../features/editor/useEditorCommands";
+import { GlyphSidebar } from "../features/editor/GlyphSidebar";
 
 export default function App() {
   const [contextMenu, setContextMenu] = useState<Point | null>(null);
@@ -35,17 +29,12 @@ export default function App() {
       glyph.strokes[0]?.id || null,
     ),
     [tool, setTool] = useState<Tool>("select");
-  const [source, setSource] = useState<{ src: string; name: string } | null>(
-      null,
-    ),
-    [toast, setToast] = useState(""),
+  const [toast, setToast] = useState(""),
     [menu, setMenu] = useState<"export" | "project" | null>(null),
     [shortcuts, setShortcuts] = useState(false),
     [showReference, setShowReference] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null),
     projectInput = useRef<HTMLInputElement>(null);
-  const node = nodeId ? glyph.nodes[nodeId] : undefined,
-    stroke = glyph.strokes.find((s) => s.id === strokeId);
   const select = useCallback((n: string | null, s?: string | null) => {
     setContextMenu(null);
     setNodeId(n);
@@ -57,6 +46,28 @@ export default function App() {
     setMenu(null);
     setContextMenu(position);
   };
+  const {
+    source, setSource, importFile, importProject, exportProject, saveSvg, savePng,
+  } = useProjectFiles({
+    doc,
+    glyph,
+    clearSelection: () => select(null, null),
+    closeMenu: () => setMenu(null),
+    toast: setToast,
+  });
+  const { remove, duplicate, undo, redo } = useEditorCommands({
+    doc,
+    glyph,
+    nodeId,
+    strokeId,
+    select,
+    toast: setToast,
+    importing: !!source,
+    shortcuts,
+    setShortcuts,
+    closeMenu: () => setMenu(null),
+    exportProject,
+  });
   const upload = () => fileInput.current?.click();
   useEffect(() => {
     if (!toast) return;
@@ -88,219 +99,8 @@ export default function App() {
     setTool("pen");
     setShowReference(false);
   };
-  const importFile = (file: File) => {
-    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
-      setToast("请选择 PNG、JPG 或 WebP 图片");
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      setToast("图片不能超过 20 MB");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () =>
-      setSource({ src: reader.result as string, name: file.name });
-    reader.onerror = () => setToast("图片读取失败");
-    reader.readAsDataURL(file);
-  };
-  const importProject = async (file: File) => {
-    try {
-      if (file.size > 30 * 1024 * 1024) throw new Error();
-      const value: unknown = JSON.parse(await file.text());
-      if (!isProject(value)) throw new Error();
-      doc.replace(migrateProjectBrush(value));
-      select(null, null);
-      setToast("手稿已打开");
-    } catch {
-      setToast("请选择有效的造字手稿 JSON 文件");
-    }
-  };
-  const exportProject = () => {
-    download(
-      JSON.stringify(project, null, 2),
-      `${safeName(project.name)}.coinage.json`,
-      "application/json",
-    );
-    setMenu(null);
-    setToast("手稿已导出");
-  };
-  const saveSvg = () => {
-    download(exportSvg(glyph, project.brush), `${safeName(glyph.name)}.svg`, "image/svg+xml");
-    setMenu(null);
-    setToast("SVG 已导出");
-  };
-  const savePng = () => {
-    const url = URL.createObjectURL(
-        new Blob([exportSvg(glyph, project.brush)], { type: "image/svg+xml" }),
-      ),
-      img = new Image();
-    img.onload = () => {
-      const c = document.createElement("canvas");
-      c.width = c.height = 1280;
-      c.getContext("2d")!.drawImage(img, 0, 0, 1280, 1280);
-      c.toBlob((blob) => {
-        if (blob) {
-          const a = document.createElement("a"),
-            png = URL.createObjectURL(blob);
-          a.href = png;
-          a.download = `${safeName(glyph.name)}.png`;
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(png), 1000);
-        }
-      });
-      URL.revokeObjectURL(url);
-      setToast("PNG 已导出");
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      setToast("PNG 导出失败");
-    };
-    img.src = url;
-    setMenu(null);
-  };
-  const remove = () => {
-    if (
-      stroke?.locked ||
-      (node && glyph.strokes.some((s) => s.locked && s.nodes.includes(node.id)))
-    ) {
-      setToast("请先解锁笔画");
-      return;
-    }
-    if (node) {
-      update((g) => {
-        delete g.nodes[node.id];
-        g.strokes = g.strokes
-          .map((s) => ({ ...s, nodes: s.nodes.filter((id) => id !== node.id) }))
-          .filter((s) => s.nodes.length >= 2);
-        const used = new Set(g.strokes.flatMap((s) => s.nodes));
-        Object.keys(g.nodes).forEach((id) => {
-          if (!used.has(id)) delete g.nodes[id];
-        });
-      });
-      select(null);
-    } else if (stroke) {
-      update((g) => {
-        g.strokes = g.strokes.filter((s) => s.id !== stroke.id);
-        const used = new Set(g.strokes.flatMap((s) => s.nodes));
-        Object.keys(g.nodes).forEach((id) => {
-          if (!used.has(id)) delete g.nodes[id];
-        });
-      });
-      select(null, null);
-    } else {
-      update((_, p) => {
-        p.glyphs = p.glyphs.filter((g) => g.id !== glyph.id);
-        if (!p.glyphs.length) p.glyphs.push(emptyGlyph());
-        p.activeId = p.glyphs[0].id;
-      });
-      select(null, null);
-    }
-    setToast("已删除，可撤销");
-  };
-  const duplicate = () => {
-    if (!stroke) return;
-    const sid = uid();
-    update((g) => {
-      const mapping = new Map<string, string>(),
-        ids = stroke.nodes.map((old) => {
-          if (mapping.has(old)) return mapping.get(old)!;
-          const id = uid();
-          mapping.set(old, id);
-          const n = g.nodes[old];
-          g.nodes[id] = {
-            ...n,
-            id,
-            x: clamp(n.x + 24, 0, 640),
-            y: clamp(n.y + 24, 0, 640),
-          };
-          return id;
-        });
-      g.strokes.push({
-        ...stroke,
-        id: sid,
-        name: `${stroke.name} 副本`,
-        nodes: ids,
-        locked: false,
-      });
-    });
-    select(null, sid);
-  };
-  const undo = () => {
-      doc.undo();
-      select(null, null);
-    },
-    redo = () => {
-      doc.redo();
-      select(null, null);
-    };
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (source) return;
-      if (shortcuts) {
-        if (e.key === "Escape") setShortcuts(false);
-        return;
-      }
-      if (
-        (e.target as HTMLElement).closest(
-          "input, textarea, select, [contenteditable]",
-        )
-      )
-        return;
-      if (e.ctrlKey || e.metaKey) {
-        if (e.key.toLowerCase() === "z") {
-          e.preventDefault();
-          e.shiftKey ? redo() : undo();
-        }
-        if (e.key.toLowerCase() === "y") {
-          e.preventDefault();
-          redo();
-        }
-        if (e.key.toLowerCase() === "s") {
-          e.preventDefault();
-          exportProject();
-        }
-        if (e.key.toLowerCase() === "d") {
-          e.preventDefault();
-          duplicate();
-        }
-        return;
-      }
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        if (node || stroke) remove();
-      }
-      if (e.key === "Escape") {
-        select(null, null);
-        setMenu(null);
-      }
-      if (e.key === "?") setShortcuts(true);
-      if (
-        node &&
-        !glyph.strokes.some((s) => s.locked && s.nodes.includes(node.id)) &&
-        ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)
-      ) {
-        e.preventDefault();
-        const d = e.shiftKey ? 10 : 1;
-        update((g) => {
-          const n = g.nodes[node.id];
-          n.x = clamp(
-            n.x + (e.key === "ArrowRight" ? d : e.key === "ArrowLeft" ? -d : 0),
-            0,
-            640,
-          );
-          n.y = clamp(
-            n.y + (e.key === "ArrowDown" ? d : e.key === "ArrowUp" ? -d : 0),
-            0,
-            640,
-          );
-        });
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  });
   return (
-    <div className={`studio ${inspectorOpen ? "inspector-open" : ""}`}>
+    <div className={`studio ${inspectorOpen ? "inspector-open" : ""} h-[100dvh] min-h-[580px] flex flex-col overflow-hidden`}>
       <input
         ref={fileInput}
         type="file"
@@ -321,19 +121,30 @@ export default function App() {
           e.target.value = "";
         }}
       />
-      <header className="app-header">
-        <div className="brand">
-          <span className="brand-mark">
+      <header className="app-header h-[78px] shrink-0 bg-[#fcfdf9] border-b [border-bottom-style:solid] border-b-[var(--border)]
+        flex items-center py-0 px-[26px] gap-[23px] z-[20] wide:py-0 wide:px-[30px] laptop:py-0 laptop:px-[18px]
+        laptop:gap-[16px] tablet:h-[68px] tablet:py-0 tablet:px-[14px] tablet:gap-[14px] compact:h-[64px]
+        compact:py-0 compact:px-[12px] compact:gap-[10px] phone:py-0 phone:px-[9px] phone:gap-[7px]">
+        <div className="brand flex items-center gap-[11px] shrink-0 [&>span:last-child]:text-[20px] [&>span:last-child]:font-[650]
+          [&>span:last-child]:leading-[1.1] [&>span:last-child]:tracking-[3px]
+          tablet:[&>span:last-child]:text-[18px] phone:gap-[7px] phone:[&>span:last-child]:text-[16px]">
+          <span className="brand-mark grid place-items-center w-[37px] h-[39px] bg-[#2d4d39] rounded-[9px] text-[#e0edc6]
+            [&_svg]:w-[26px] [&_svg]:h-[26px] tablet:h-[34px] tablet:w-[32px] phone:w-[29px] [&_svg]:stroke-current [&_svg]:fill-none [&_svg]:[stroke-width:1.8] [&_svg]:[stroke-linejoin:miter]">
             <svg viewBox="0 0 30 30">
               <path d="M5 23V11L15 4l10 7v12M5 16h20M15 4v22M8 25l7-9 7 9" />
             </svg>
           </span>
           <span>
-            造字<span className="brand-latin">COINAGE</span>
+            造字<span className="brand-latin block text-[8px] tracking-[2.15px] mt-[6px] font-semibold text-[#7e897c] tablet:text-[7px]">COINAGE</span>
           </span>
         </div>
-        <div className="document-title">
-          <span className="header-divider" />
+        <div className="document-title flex items-center gap-[12px] [&>input]:w-[145px] [&>input]:[border:0]
+          [&>input]:bg-[transparent] [&>input]:text-[13px] [&>input]:text-[#586052] [&>input]:py-[7px]
+          [&>input]:px-0 [&_.icon-button]:w-[25px] [&_.icon-button]:h-[28px] laptop:[&>input]:w-[130px]
+          laptop:gap-[7px] tablet:[&>input]:w-[107px] tablet:[&>input]:text-[11px] tablet:[&_.header-divider]:m-0
+          compact:gap-[3px] compact:[&>input]:w-[102px] compact:[&>input]:text-[11px] phone:[&>input]:hidden
+          phone:[&>.header-divider]:hidden phone:ml-[-6px]">
+          <span className="header-divider w-[1px] h-[27px] bg-[var(--border)] mr-[6px]" />
           <input
             aria-label="手稿名称"
             value={project.name}
@@ -350,7 +161,7 @@ export default function App() {
             }}
           />
           <div
-            className="dropdown-wrap"
+            className="dropdown-wrap relative"
             onPointerDown={(e) => e.stopPropagation()}
           >
             <IconButton
@@ -359,7 +170,11 @@ export default function App() {
               onClick={() => setMenu(menu === "project" ? null : "project")}
             />
             {menu === "project" && (
-              <div className="dropdown project-dropdown">
+              <div className="dropdown project-dropdown absolute top-[calc(100%_+_9px)] right-0 bg-[#fcfdf9] border [border-style:solid]
+                border-[#dfe3d7] shadow-[0_10px_35px_#22321a14] rounded-[9px] w-[204px] p-[6px] z-[50] [&_button]:flex
+                [&_button]:items-center [&_button]:gap-[10px] [&_button]:w-full [&_button]:text-[12px]
+                [&_button]:py-[11px] [&_button]:px-[10px] [&_button]:text-left [&_button]:rounded-[5px] left-[-20px]
+                right-auto [&_button:hover]:bg-[#edf2e6]">
                 <button
                   onClick={() => {
                     projectInput.current?.click();
@@ -386,16 +201,19 @@ export default function App() {
             )}
           </div>
         </div>
-        <div className={`save-state ${doc.saved === "error" ? "error" : ""}`}>
-          <span className="save-dot" />
+        <div className={`save-state ${doc.saved === "error" ? "error" : ""} flex items-center gap-[7px] text-[#8b9386] text-[11px]
+          whitespace-nowrap laptop:hidden [&.error]:text-[#a04c32] [&.error_.save-dot]:bg-[#b76548]`}>
+          <span className="save-dot inline-block w-[5px] h-[5px] rounded-[50%] bg-[#8eab70] shrink-0" />
           {doc.saved === "saved"
             ? "已保存到本机"
             : doc.saved === "saving"
               ? "保存中"
               : "存储空间不足，请导出手稿"}
         </div>
-        <div className="header-actions">
-          <div className="history-actions">
+        <div className="header-actions ml-auto flex items-center gap-[14px] laptop:gap-[9px] laptop:[&_.history-actions]:mr-0
+          tablet:gap-[7px] tablet:[&_.button]:py-0 tablet:[&_.button]:px-[9px] tablet:[&_.button]:text-[11px]
+          compact:gap-[7px] compact:[&_.button]:h-[34px] phone:gap-[5px]">
+          <div className="history-actions flex gap-[3px] mr-[8px] tablet:[&_.icon-button]:w-[25px] compact:gap-[1px]">
             <IconButton
               icon="undo"
               title="撤销 Ctrl+Z"
@@ -409,27 +227,35 @@ export default function App() {
               disabled={!doc.canRedo}
             />
           </div>
-          <button className="button import-button" onClick={upload}>
+          <button className={`button import-button h-[37px] py-0 px-[14px] inline-flex items-center justify-center gap-[8px] border
+            [border-style:solid] border-[#dfe4d7] rounded-[6px] bg-[#fcfdf9] text-[12px] font-[550] whitespace-nowrap
+            compact:text-[0px]! compact:p-0! compact:w-[34px] compact:gap-0 ${buttonStateClasses}`} onClick={upload}>
             <Icon name="upload" />
             导入图片
           </button>
           <div
-            className="split-button dropdown-wrap"
+            className="split-button dropdown-wrap flex relative [&>.button]:rounded-[6px_0_0_6px] [&>.button]:border-r
+              [&>.button]:[border-right-style:solid] [&>.button]:border-r-[#52705b]"
             onPointerDown={(e) => e.stopPropagation()}
           >
-            <button className="button primary" onClick={saveSvg}>
+            <button className={`button primary pl-[15px] pr-[14px] h-[37px] py-0 inline-flex items-center justify-center gap-[8px] border
+              [border-style:solid] border-[#dfe4d7] rounded-[6px] bg-[#fcfdf9] text-[12px] font-[550] whitespace-nowrap ${buttonStateClasses}`} onClick={saveSvg}>
               <Icon name="download" />
               导出 SVG
             </button>
             <button
-              className="split-arrow"
+              className="split-arrow h-[37px] w-[29px] grid place-items-center bg-[#2d4e3b] text-[#e5eedc] rounded-[0_6px_6px_0]
+                compact:h-[34px] compact:w-[23px] enabled:hover:bg-[#3d6248] enabled:hover:text-white!"
               aria-label="更多导出格式"
               onClick={() => setMenu(menu === "export" ? null : "export")}
             >
               <Icon name="chevron" size={16} />
             </button>
             {menu === "export" && (
-              <div className="dropdown export-dropdown">
+              <div className="dropdown export-dropdown absolute top-[calc(100%_+_9px)] right-0 bg-[#fcfdf9] border [border-style:solid]
+                border-[#dfe3d7] shadow-[0_10px_35px_#22321a14] rounded-[9px] w-[204px] p-[6px] z-[50] [&_button]:flex
+                [&_button]:items-center [&_button]:gap-[10px] [&_button]:w-full [&_button]:text-[12px]
+                [&_button]:py-[11px] [&_button]:px-[10px] [&_button]:text-left [&_button]:rounded-[5px] [&_button:hover]:bg-[#edf2e6]">
                 <button onClick={saveSvg}>
                   <Icon name="node" />
                   SVG 矢量图
@@ -447,105 +273,20 @@ export default function App() {
           </div>
         </div>
       </header>
-      <div className="workspace">
-        <aside className="left-panel">
-          <div className="panel-tabs">
-            <span>
-              字符集 <b>{project.glyphs.length.toString().padStart(2, "0")}</b>
-            </span>
-            <IconButton icon="plus" title="新建字符" onClick={addGlyph} />
-          </div>
-          <div className="glyph-list">
-            {project.glyphs.map((g, index) => (
-              <button
-                key={g.id}
-                className={`glyph-card ${g.id === glyph.id ? "selected" : ""}`}
-                onClick={() => switchGlyph(g.id)}
-              >
-                <div className="glyph-thumb">
-                  <GlyphPreview glyph={g} brush={project.brush} />
-                </div>
-                <span className="glyph-card-text">
-                  <strong>{g.name}</strong>
-                  <small>{String(index + 1).padStart(2, "0")}</small>
-                </span>
-                {g.id === glyph.id && <span className="glyph-active-dot" />}
-              </button>
-            ))}
-            <button className="add-glyph" onClick={addGlyph}>
-              <Icon name="plus" size={16} />
-              新建字符
-            </button>
-          </div>
-          <div className="layers-section">
-            <div className="section-heading">
-              <h3>笔画</h3>
-              <span className="count-badge">{glyph.strokes.length}</span>
-            </div>
-            <div className="layer-list">
-              {glyph.strokes.map((s, i) => (
-                <div
-                  key={s.id}
-                  className={`layer-row ${strokeId === s.id ? "selected" : ""} ${!s.visible ? "muted" : ""}`}
-                >
-                  <button
-                    className="layer-select"
-                    onClick={() => select(null, s.id)}
-                  >
-                    <svg width="26" height="26" viewBox="0 0 640 640">
-                      <path
-                        d={centerPath(glyph, s)}
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="38"
-                      />
-                    </svg>
-                    <span>{s.name}</span>
-                    <small>{String(i + 1).padStart(2, "0")}</small>
-                  </button>
-                  <button
-                    className={`layer-control ${s.locked ? "is-locked" : ""}`}
-                    aria-label={`${s.locked ? "解锁" : "锁定"}${s.name}`}
-                    title={s.locked ? "解锁笔画" : "锁定笔画"}
-                    onClick={() =>
-                      update((g) => {
-                        g.strokes.find((item) => item.id === s.id)!.locked =
-                          !s.locked;
-                      })
-                    }
-                  >
-                    <Icon name={s.locked ? "lock" : "unlock"} size={13} />
-                  </button>
-                  <button
-                    className="layer-control"
-                    aria-label={`${s.visible ? "隐藏" : "显示"}${s.name}`}
-                    title={s.visible ? "隐藏笔画" : "显示笔画"}
-                    onClick={() =>
-                      update((g) => {
-                        g.strokes.find((item) => item.id === s.id)!.visible =
-                          !s.visible;
-                      })
-                    }
-                  >
-                    <Icon name={s.visible ? "eye" : "eyeOff"} size={14} />
-                  </button>
-                </div>
-              ))}
-              {!glyph.strokes.length && (
-                <button className="empty-layer" onClick={() => setTool("pen")}>
-                  <Icon name="pen" />
-                  绘制第一笔
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="left-footer">
-            <button onClick={() => setShortcuts(true)}>
-              <Icon name="shortcut" size={17} />
-              快捷键<span>?</span>
-            </button>
-          </div>
-        </aside>
+      <div className="workspace flex-1 min-h-0 grid grid-cols-[224px_minmax(280px,_1fr)_258px]
+        wide:grid-cols-[250px_minmax(280px,_1fr)_280px] laptop:grid-cols-[185px_minmax(280px,_1fr)_232px]
+        tablet:grid-cols-[154px_minmax(280px,_1fr)_214px] compact:grid-cols-[88px_minmax(0,_1fr)] compact:relative
+        phone:grid-cols-[76px_minmax(0,_1fr)]">
+        <GlyphSidebar
+          doc={doc}
+          glyph={glyph}
+          strokeId={strokeId}
+          select={select}
+          switchGlyph={switchGlyph}
+          addGlyph={addGlyph}
+          startDrawing={() => setTool("pen")}
+          showShortcuts={() => setShortcuts(true)}
+        />
         <EditorCanvas
           openContextMenu={openContextMenu}
           toggleInspector={() => setInspectorOpen((v) => !v)}
@@ -606,18 +347,20 @@ export default function App() {
       )}
       {shortcuts && (
         <div
-          className="modal-backdrop"
+          className="modal-backdrop fixed inset-0 z-[100] bg-[#1f30244f] backdrop-blur-[5px] flex items-center justify-center p-[30px] compact:p-[15px]"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShortcuts(false);
           }}
         >
           <section
-            className="shortcut-modal"
+            className="shortcut-modal bg-[#fafbf6] border [border-style:solid] border-[#e4e8dc] rounded-[15px]
+              shadow-[0_24px_90px_#172b2433] w-[480px] max-h-[calc(100dvh_-_60px)] overflow-auto p-[27px]"
             role="dialog"
             aria-modal="true"
             aria-label="快捷键"
           >
-            <div className="modal-heading">
+            <div className="modal-heading flex items-center justify-between mb-[23px] [&_h2]:text-[20px] [&_h2]:tracking-[1px]
+              [&_h2]:font-semibold [&_h2]:mt-[5px] [&_h2]:mx-0 [&_h2]:mb-0">
               <h2>快捷键</h2>
               <IconButton
                 icon="close"
@@ -625,7 +368,10 @@ export default function App() {
                 onClick={() => setShortcuts(false)}
               />
             </div>
-            <div className="shortcut-list">
+            <div className="shortcut-list flex flex-col gap-0 [&>div]:flex [&>div]:items-center [&>div]:justify-between
+              [&>div]:text-[11px] [&>div]:gap-[20px] [&>div]:min-h-[36px] [&>div]:border-b
+              [&>div]:[border-bottom-style:solid] [&>div]:border-b-[#e8ecdf] [&>div:last-child]:[border:0]
+              [&_kbd]:text-[#81936e] phone:[&>div]:text-[10px] phone:[&>div]:gap-[10px] phone:[&_kbd]:text-[9px]">
               {[
                 ["选择 / 钢笔 / 分支 / 平移", "V / P / B / H"],
                 ["从节点拉出新笔画", "Alt + 拖动"],
@@ -645,7 +391,7 @@ export default function App() {
               ].map(([label, key]) => (
                 <div key={label}>
                   <span>{label}</span>
-                  <kbd>{key}</kbd>
+                  <kbd className="[font:10px_ui-monospace,monospace]">{key}</kbd>
                 </div>
               ))}
             </div>
@@ -653,7 +399,9 @@ export default function App() {
         </div>
       )}
       {toast && (
-        <div className="toast" role="status">
+        <div className="toast fixed bottom-[28px] left-[50%] z-[150] flex items-center gap-[10px] py-[13px] px-[20px] bg-[#2f4d3c]
+          text-[#f1f7e9] border [border-style:solid] border-[#49654f] rounded-[9px] shadow-[0_4px_20px_#16301e25]
+          text-[12px] max-w-[90vw] [&>svg]:text-[#c2dba2] [transform:translateX(-50%)] animate-[toast-in_0.2s_ease-out]" role="status">
           <Icon name="check" size={17} />
           {toast}
         </div>

@@ -1,0 +1,72 @@
+.editor .canvas-stage {
+  background-image: radial-gradient(#e0e4d8 0.6px, transparent 0.6px);
+  background-size: 8px 8px;
+}
+
+.editor .ruler-horizontal {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 9px,
+    #dce1d4 9px,
+    #dce1d4 10px
+  );
+  background-position: bottom;
+  background-repeat: repeat-x;
+  background-size: 100% 4px;
+}
+
+.editor .ruler-vertical {
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0,
+    transparent 9px,
+    #dce1d4 9px,
+    #dce1d4 10px
+  );
+  background-position: right;
+  background-repeat: repeat-y;
+  background-size: 4px 100%;
+}
+
+.editor .node-target,
+.editor .handle-target {
+  cursor: grab;
+}
+
+.editor .node-target:active,
+.editor .handle-target:active {
+  cursor: grabbing;
+}
+
+.editor .branch-handle {
+  cursor: crosshair;
+}
+
+.editor .editable-stroke {
+  cursor: move;
+}
+
+.editor .locked-stroke {
+  cursor: default;
+}
+
+.editor .tool-pen .artboard,
+.editor .tool-pen .editable-stroke {
+  cursor: crosshair;
+}
+
+.editor .tool-hand,
+.editor .tool-hand .artboard,
+.editor .tool-hand .editable-stroke,
+.editor .tool-hand .node-target,
+.editor .space-pan,
+.editor .space-pan .artboard,
+.editor .space-pan .editable-stroke,
+.editor .space-pan .node-target {
+  cursor: grab;
+}
+
+.editor .is-preview .editable-stroke {
+  cursor: default;
+}
