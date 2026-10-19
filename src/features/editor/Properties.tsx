@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { clamp, distance, uid } from "../../core/model";
+import { clamp, distance } from "../../core/model";
 import type { Glyph, Knot, Project, Stroke } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
 import { GlyphPreview } from "./GlyphPreview";
@@ -11,12 +11,8 @@ type Props = {
   glyph: Glyph;
   nodeId: string | null;
   strokeId: string | null;
-  select: (node: string | null, stroke?: string | null) => void;
   showReference: boolean;
   setShowReference: (v: boolean) => void;
-  remove: () => void;
-  duplicate: () => void;
-  toast: (s: string) => void;
   closeInspector: () => void;
 };
 export function Properties({
@@ -24,12 +20,8 @@ export function Properties({
   glyph,
   nodeId,
   strokeId,
-  select,
   showReference,
   setShowReference,
-  remove,
-  duplicate,
-  toast,
   closeInspector,
 }: Props) {
   const node = nodeId ? glyph.nodes[nodeId] : undefined,
@@ -77,87 +69,6 @@ export function Properties({
           g.nodes[id].width = width;
         });
     }, record);
-  };
-  const transform = (kind: "flip" | "rotate") => {
-    if (!stroke || stroke.locked || stroke.nodes.some(nodeLocked)) return;
-    doc.update((g) => {
-      const nodes = [...new Set(stroke.nodes)].map((id) => g.nodes[id]),
-        cx =
-          (Math.min(...nodes.map((n) => n.x)) +
-            Math.max(...nodes.map((n) => n.x))) /
-          2,
-        cy =
-          (Math.min(...nodes.map((n) => n.y)) +
-            Math.max(...nodes.map((n) => n.y))) /
-          2;
-      nodes.forEach((n) => {
-        const x = n.x - cx,
-          y = n.y - cy;
-        n.x = cx + (kind === "flip" ? -x : -y);
-        n.y = cy + (kind === "flip" ? y : x);
-        if (n.handle)
-          n.handle =
-            kind === "flip"
-              ? { x: -n.handle.x, y: n.handle.y }
-              : { x: -n.handle.y, y: n.handle.x };
-        if (n.handleIn)
-          n.handleIn =
-            kind === "flip"
-              ? { x: -n.handleIn.x, y: n.handleIn.y }
-              : { x: -n.handleIn.y, y: n.handleIn.x };
-      });
-      const dx =
-        Math.min(...nodes.map((n) => n.x)) < 0
-          ? -Math.min(...nodes.map((n) => n.x))
-          : Math.max(...nodes.map((n) => n.x)) > 640
-            ? 640 - Math.max(...nodes.map((n) => n.x))
-            : 0;
-      const dy =
-        Math.min(...nodes.map((n) => n.y)) < 0
-          ? -Math.min(...nodes.map((n) => n.y))
-          : Math.max(...nodes.map((n) => n.y)) > 640
-            ? 640 - Math.max(...nodes.map((n) => n.y))
-            : 0;
-      nodes.forEach((n) => {
-        n.x += dx;
-        n.y += dy;
-      });
-    });
-  };
-  const merge = () => {
-    if (!node || locked) return;
-    const nearest = Object.values(glyph.nodes)
-      .filter((n) => n.id !== node.id && !nodeLocked(n.id))
-      .sort((a, b) => distance(a, node) - distance(b, node))[0];
-    if (!nearest || distance(nearest, node) > 36) {
-      toast("请把节点移动到目标节点附近（36 px 内）");
-      return;
-    }
-    doc.update((g) => {
-      g.strokes = g.strokes
-        .map((s) => ({
-          ...s,
-          nodes: s.nodes
-            .map((id) => (id === node.id ? nearest.id : id))
-            .filter((id, i, ids) => i === 0 || id !== ids[i - 1]),
-        }))
-        .filter((s) => s.nodes.length >= 2);
-      delete g.nodes[node.id];
-    });
-    select(nearest.id);
-    toast("节点已连接");
-  };
-  const disconnect = () => {
-    if (!node || !stroke || locked) return;
-    const id = uid();
-    doc.update((g) => {
-      g.nodes[id] = { ...g.nodes[node.id], id };
-      g.strokes.find((s) => s.id === stroke.id)!.nodes = stroke.nodes.map(
-        (n) => (n === node.id ? id : n),
-      );
-    });
-    select(id, stroke.id);
-    toast("已拆开当前笔画的连接");
   };
   return (
     <aside className="right-panel">
@@ -397,81 +308,6 @@ export function Properties({
                 })
               }
             />
-          </Section>
-        )}
-        {stroke && (
-          <Section title="操作">
-            <div className="operation-grid">
-              <button onClick={duplicate}>
-                <Icon name="copy" size={16} />
-                复制笔画
-              </button>
-              <button onClick={() => transform("flip")} disabled={widthLocked}>
-                <Icon name="reflect" size={16} />
-                水平翻转
-              </button>
-              <button
-                onClick={() => transform("rotate")}
-                disabled={widthLocked}
-              >
-                <Icon name="rotate" size={16} />
-                旋转 90°
-              </button>
-              <button onClick={remove} disabled={locked}>
-                <Icon name="trash" size={16} />
-                {node ? "删除节点" : "删除笔画"}
-              </button>
-            </div>
-            {node && (
-              <button
-                className="connect-button"
-                disabled={locked}
-                onClick={merge}
-              >
-                <Icon name="branch" size={16} />
-                连接邻近节点
-                <Icon name="arrow" size={14} />
-              </button>
-            )}
-            {node && (
-              <button
-                className="connect-button"
-                onClick={disconnect}
-                disabled={
-                  locked ||
-                  glyph.strokes.filter((s) => s.nodes.includes(node.id))
-                    .length < 2
-                }
-              >
-                <Icon name="node" size={16} />
-                拆开连接
-                <Icon name="arrow" size={14} />
-              </button>
-            )}
-          </Section>
-        )}
-        {!stroke && !node && (
-          <Section title="操作">
-            <div className="operation-grid">
-              <button
-                onClick={() => {
-                  const copy = structuredClone(glyph);
-                  copy.id = uid();
-                  copy.name += " 副本";
-                  doc.update((_, p) => {
-                    p.glyphs.push(copy);
-                    p.activeId = copy.id;
-                  });
-                }}
-              >
-                <Icon name="copy" size={16} />
-                复制字符
-              </button>
-              <button onClick={remove}>
-                <Icon name="trash" size={16} />
-                删除字符
-              </button>
-            </div>
           </Section>
         )}
       </div>

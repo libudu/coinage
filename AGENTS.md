@@ -15,7 +15,8 @@ src/
 ├── features/
 │   ├── editor/
 │   │   ├── EditorCanvas.tsx    # 画布、节点、分支、控制柄和钢笔交互
-│   │   ├── Properties.tsx      # 节点、笔画、连接关系和外观属性
+│   │   ├── Properties.tsx      # 节点、笔画、笔锋和外观属性
+│   │   ├── EditorContextMenu.tsx # 字符、笔画与节点操作右键菜单
 │   │   ├── BrushControls.tsx   # 全局起收笔与快捷预设
 │   │   ├── BrushTuning.tsx     # 折叠式笔锋长度、张开调节与拖动历史
 │   │   └── GlyphPreview.tsx    # 字形缩略预览

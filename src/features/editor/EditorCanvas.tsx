@@ -38,6 +38,11 @@ type Props = {
   showReference: boolean;
   modalOpen: boolean;
   toggleInspector: () => void;
+  openContextMenu: (
+    position: Point,
+    node: string | null,
+    stroke: string | null,
+  ) => void;
 };
 export function EditorCanvas({
   doc,
@@ -53,6 +58,7 @@ export function EditorCanvas({
   showReference,
   modalOpen,
   toggleInspector,
+  openContextMenu,
 }: Props) {
   const [grid, setGrid] = useState(true),
     [nodesVisible, setNodesVisible] = useState(true),
@@ -188,9 +194,9 @@ export function EditorCanvas({
     return { x: clamp(p.x, 0, 640), y: clamp(p.y, 0, 640) };
   };
   const start = (e: PE, kind: Drag["kind"], id?: string, sign?: number) => {
+    if (e.button !== 0 && e.button !== 1) return;
     e.preventDefault();
     e.stopPropagation();
-    if (e.button !== 0 && e.button !== 1) return;
     if (space || tool === "hand" || e.button === 1) kind = "pan";
     if (kind === "pan") {
       drag.current = {
@@ -529,10 +535,26 @@ export function EditorCanvas({
         onPointerUp={(e) => end(e)}
         onPointerCancel={(e) => end(e, true)}
         onPointerDown={(e) => {
+          if (e.button !== 0 && e.button !== 1) return;
           if (e.target === e.currentTarget) {
             if (space || tool === "hand" || e.button === 1) start(e, "pan");
             else select(null, null);
           }
+        }}
+        onContextMenu={(e) => {
+          if ((e.target as Element).closest("button, input")) return;
+          e.preventDefault();
+          if (preview || drag.current) return;
+          const target = e.target as Element;
+          const targetNode =
+            target.closest("[data-node-id]")?.getAttribute("data-node-id") ?? null;
+          const targetStroke = targetNode
+            ? (stroke?.visible && stroke.nodes.includes(targetNode)
+                ? stroke
+                : glyph.strokes.find((s) => s.visible && s.nodes.includes(targetNode)))
+                ?.id ?? null
+            : target.closest("[data-stroke-id]")?.getAttribute("data-stroke-id") ?? null;
+          openContextMenu({ x: e.clientX, y: e.clientY }, targetNode, targetStroke);
         }}
         onDragOver={(e) => {
           e.preventDefault();
@@ -684,6 +706,7 @@ export function EditorCanvas({
               {outlines.map(({ stroke: s, path }) => (
                 <path
                   key={s.id}
+                  data-stroke-id={s.id}
                   d={path}
                   fill="transparent"
                   className={s.locked ? "locked-stroke" : "editable-stroke"}
@@ -726,6 +749,7 @@ export function EditorCanvas({
                   return (
                     <g
                       key={id}
+                      data-node-id={id}
                       className="node-target"
                       onPointerDown={(e) => start(e, "node", id)}
                     >
@@ -779,6 +803,7 @@ export function EditorCanvas({
                               stroke="#547a48"
                               strokeWidth={1.3 / scale}
                               className="handle-target"
+                              data-node-id={node.id}
                               onPointerDown={(e) =>
                                 start(e, "handle", node.id, sign)
                               }
@@ -788,6 +813,7 @@ export function EditorCanvas({
                       })}
                     <g
                       className="branch-handle"
+                      data-node-id={node.id}
                       onPointerDown={(e) => start(e, "branch", node.id)}
                     >
                       <path

@@ -8,6 +8,7 @@ import {
   uid,
 } from "../core/model";
 import { migrateProjectBrush } from "../core/brush";
+import type { Point } from "../core/model";
 import { Icon } from "../shared/components/Icon";
 import { GlyphPreview } from "../features/editor/GlyphPreview";
 import { IconButton } from "../shared/components/controls";
@@ -15,10 +16,12 @@ import { download, safeName } from "../shared/utils/files";
 import { ImportDialog } from "../features/tracing/ImportDialog";
 import { EditorCanvas } from "../features/editor/EditorCanvas";
 import type { Tool } from "../features/editor/EditorCanvas";
+import { EditorContextMenu } from "../features/editor/EditorContextMenu";
 import { Properties } from "../features/editor/Properties";
 import { useProject } from "../features/project/useProject";
 
 export default function App() {
+  const [contextMenu, setContextMenu] = useState<Point | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const doc = useProject(),
     { project, update } = doc,
@@ -44,9 +47,16 @@ export default function App() {
   const node = nodeId ? glyph.nodes[nodeId] : undefined,
     stroke = glyph.strokes.find((s) => s.id === strokeId);
   const select = useCallback((n: string | null, s?: string | null) => {
+    setContextMenu(null);
     setNodeId(n);
     if (s !== undefined) setStrokeId(s);
   }, []);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const openContextMenu = (position: Point, n: string | null, s: string | null) => {
+    select(n, s);
+    setMenu(null);
+    setContextMenu(position);
+  };
   const upload = () => fileInput.current?.click();
   useEffect(() => {
     if (!toast) return;
@@ -537,6 +547,7 @@ export default function App() {
           </div>
         </aside>
         <EditorCanvas
+          openContextMenu={openContextMenu}
           toggleInspector={() => setInspectorOpen((v) => !v)}
           doc={doc}
           glyph={glyph}
@@ -549,7 +560,7 @@ export default function App() {
           importFile={importFile}
           toast={setToast}
           showReference={showReference}
-          modalOpen={!!source || shortcuts}
+          modalOpen={!!source || shortcuts || !!contextMenu}
         />
         <Properties
           closeInspector={() => setInspectorOpen(false)}
@@ -557,13 +568,24 @@ export default function App() {
           glyph={glyph}
           nodeId={nodeId}
           strokeId={strokeId}
-          select={select}
           showReference={showReference}
           setShowReference={setShowReference}
-          remove={remove}
-          duplicate={duplicate}
-          toast={setToast}
         />
+        {contextMenu && (
+          <EditorContextMenu
+            key={`${glyph.id}:${nodeId}:${strokeId}`}
+            position={contextMenu}
+            onClose={closeContextMenu}
+            doc={doc}
+            glyph={glyph}
+            nodeId={nodeId}
+            strokeId={strokeId}
+            select={select}
+            remove={remove}
+            duplicate={duplicate}
+            toast={setToast}
+          />
+        )}
       </div>
       {source && (
         <ImportDialog
@@ -609,6 +631,7 @@ export default function App() {
                 ["从节点拉出新笔画", "Alt + 拖动"],
                 ["约束 45° 方向", "Shift + 拖动"],
                 ["添加路径节点", "双击笔画"],
+                ["全局 / 节点 / 笔画操作", "右键"],
                 ["移动节点", "方向键"],
                 ["大步移动节点", "Shift + 方向键"],
                 ["临时平移画布", "空格 + 拖动"],
