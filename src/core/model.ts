@@ -1,3 +1,6 @@
+import { applyBrushProfile, brushTips, defaultBrush, isBrushDefaults, isBrushSettings } from "./brush";
+import type { BrushDefaults, BrushSample, BrushSettings, BrushTip } from "./brush";
+
 export type Point = { x: number; y: number };
 export type NodeMode = "corner" | "smooth" | "symmetric";
 export type Knot = Point & {
@@ -15,6 +18,11 @@ export type Stroke = {
   visible: boolean;
   locked: boolean;
   cap: "butt" | "round" | "square";
+  // Legacy v1 import fields; ignored when rendering and removed during migration.
+  startTip?: BrushTip | "basic";
+  endTip?: BrushTip | "basic";
+  startBrush?: BrushSettings;
+  endBrush?: BrushSettings;
   join: "miter" | "round" | "bevel";
 };
 export type Glyph = {
@@ -31,6 +39,7 @@ export type Project = {
   name: string;
   glyphs: Glyph[];
   activeId: string;
+  brush?: BrushDefaults;
 };
 export const uid = () => crypto.randomUUID();
 export const clamp = (n: number, min: number, max: number) =>
@@ -190,12 +199,12 @@ export function centerPath(g: Glyph, stroke: Stroke) {
   }
   return d;
 }
-type Sample = Point & { width: number; corner?: boolean; join?: Knot["join"] };
+type Sample = BrushSample & { corner?: boolean; join?: Knot["join"] };
 function samples(g: Glyph, stroke: Stroke): Sample[] {
   const nodes = stroke.nodes.map((id) => g.nodes[id]).filter(Boolean),
     out: Sample[] = [];
   if (nodes.length < 2) return nodes;
-  out.push({ ...nodes[0], corner: true });
+  out.push({ ...nodes[0], corner: true, boundary: true });
   for (let i = 0; i < nodes.length - 1; i++) {
     const a = nodes[i],
       b = nodes[i + 1],
@@ -221,6 +230,7 @@ function samples(g: Glyph, stroke: Stroke): Sample[] {
         width: a.width + (b.width - a.width) * t,
         corner: j === steps && b.mode === "corner",
         join: b.join,
+        boundary: j === steps,
       };
       if (distance(out[out.length - 1], p) > 0.05) out.push(p);
     }
@@ -263,8 +273,20 @@ function connectedSample(
   return peer.nodes[0] === id ? adjacent[1] : adjacent[adjacent.length - 2];
 }
 
-export function outlinePath(g: Glyph, stroke: Stroke): string {
-  const points = samples(g, stroke);
+// Every shared endpoint is occupied, including T/cross junctions where
+// connectedSample deliberately cannot choose a single continuation.
+export function tipIsConnected(g: Glyph, stroke: Stroke, end: "start" | "end") {
+  const id =
+    end === "start" ? stroke.nodes[0] : stroke.nodes[stroke.nodes.length - 1];
+  return (
+    stroke.nodes.filter((node) => node === id).length > 1 ||
+    g.strokes.some((s) => s.id !== stroke.id && s.visible && s.nodes.includes(id))
+  );
+}
+
+export function outlinePath(g: Glyph, stroke: Stroke, defaults?: BrushDefaults): string {
+  const brush = defaults ?? defaultBrush;
+  let points = samples(g, stroke);
   if (points.length < 2) return "";
   const closed =
     stroke.nodes.length > 2 &&
@@ -277,6 +299,18 @@ export function outlinePath(g: Glyph, stroke: Stroke): string {
     endConnection = closed
       ? undefined
       : connectedSample(g, stroke, stroke.nodes[stroke.nodes.length - 1]);
+  const startTip =
+      closed || tipIsConnected(g, stroke, "start")
+        ? "none"
+        : brush.startTip || "none",
+    endTip =
+      closed || tipIsConnected(g, stroke, "end")
+        ? "none"
+        : brush.endTip || "none",
+    startCap = defaults === undefined ? stroke.cap : "butt",
+    endCap = defaults === undefined ? stroke.cap : "butt";
+  if (!closed)
+    points = applyBrushProfile(points, startTip, endTip, brush.startBrush, brush.endBrush);
   const left: Point[] = [],
     right: Point[] = [];
   const arc = (
@@ -310,14 +344,16 @@ export function outlinePath(g: Glyph, stroke: Stroke): string {
         (i === points.length - 1 && !endConnection))
     ) {
       const v = i === 0 ? outgoing : incoming,
-        extension = stroke.cap === "square" ? (i === 0 ? -half : half) : 0;
+        cap = i === 0 ? startCap : endCap,
+        extension = cap === "square" ? (i === 0 ? -half : half) : 0,
+        skew = p.brushSkew || 0;
       left.push({
-        x: p.x - v.y * half + v.x * extension,
-        y: p.y + v.x * half + v.y * extension,
+        x: p.x - v.y * half + v.x * (extension + skew),
+        y: p.y + v.x * half + v.y * (extension + skew),
       });
       right.push({
-        x: p.x + v.y * half + v.x * extension,
-        y: p.y - v.x * half + v.y * extension,
+        x: p.x + v.y * half + v.x * (extension - skew),
+        y: p.y - v.x * half + v.y * (extension - skew),
       });
       return;
     }
@@ -345,8 +381,10 @@ export function outlinePath(g: Glyph, stroke: Stroke): string {
         );
       } else
         target.push({
-          x: p.x + (sum.x * half) / denominator,
-          y: p.y + (sum.y * half) / denominator,
+          x: p.x + (sum.x * half) / denominator +
+            outgoing.x * (p.brushSkew || 0) * side,
+          y: p.y + (sum.y * half) / denominator +
+            outgoing.y * (p.brushSkew || 0) * side,
         });
     }
   });
@@ -359,22 +397,22 @@ export function outlinePath(g: Glyph, stroke: Stroke): string {
     end = norm(points[points.length - 2], last),
     start = norm(first, points[1]);
   const polygon = [...left];
-  if (stroke.cap === "round" && !endConnection)
+  if (endCap === "round" && !endConnection)
     polygon.push(
       ...arc(last, last.width / 2, Math.atan2(end.x, -end.y), -Math.PI),
     );
   polygon.push(...right.reverse());
-  if (stroke.cap === "round" && !startConnection)
+  if (startCap === "round" && !startConnection)
     polygon.push(
       ...arc(first, first.width / 2, Math.atan2(-start.x, start.y), -Math.PI),
     );
   return path(polygon);
 }
 // Fill connected outlines together so antialiasing cannot expose their seams.
-export function glyphPath(g: Glyph): string {
+export function glyphPath(g: Glyph, defaults?: BrushDefaults): string {
   return g.strokes
     .filter((s) => s.visible)
-    .map((s) => outlinePath(g, s))
+    .map((s) => outlinePath(g, s, defaults))
     .join(" ");
 }
 const xml = (s: string) =>
@@ -389,8 +427,8 @@ const xml = (s: string) =>
         "'": "&apos;",
       })[c]!,
   );
-export function exportSvg(g: Glyph): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640"><title>${xml(g.name)}</title><path fill="${xml(g.color)}" d="${glyphPath(g)}"/></svg>`;
+export function exportSvg(g: Glyph, defaults?: BrushDefaults): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640"><title>${xml(g.name)}</title><path fill="${xml(g.color)}" d="${glyphPath(g, defaults)}"/></svg>`;
 }
 export function isProject(value: unknown): value is Project {
   try {
@@ -409,6 +447,7 @@ export function isProject(value: unknown): value is Project {
       }
     return (
       p.version === 1 &&
+      (p.brush === undefined || isBrushDefaults(p.brush)) &&
       typeof p.name === "string" &&
       Array.isArray(p.glyphs) &&
       p.glyphs.length > 0 &&
@@ -452,6 +491,10 @@ export function isProject(value: unknown): value is Project {
               typeof s.visible === "boolean" &&
               typeof s.locked === "boolean" &&
               ["butt", "round", "square"].includes(s.cap) &&
+              (s.startTip === undefined || s.startTip === "basic" || brushTips.includes(s.startTip)) &&
+              (s.endTip === undefined || s.endTip === "basic" || brushTips.includes(s.endTip)) &&
+              (s.startBrush === undefined || isBrushSettings(s.startBrush)) &&
+              (s.endBrush === undefined || isBrushSettings(s.endBrush)) &&
               ["miter", "round", "bevel"].includes(s.join) &&
               Array.isArray(s.nodes) &&
               s.nodes.length >= 2 &&

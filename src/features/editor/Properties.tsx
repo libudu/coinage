@@ -3,6 +3,7 @@ import { clamp, distance, uid } from "../../core/model";
 import type { Glyph, Knot, Project, Stroke } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
 import { GlyphPreview } from "./GlyphPreview";
+import { BrushControls } from "./BrushControls";
 import { IconButton, NumberField, Section } from "../../shared/components/controls";
 import type { useProject } from "../project/useProject";
 type Props = {
@@ -236,7 +237,7 @@ export function Properties({
             />
           ) : (
             <div className="glyph-inspector-preview">
-              <GlyphPreview glyph={glyph} />
+              <GlyphPreview glyph={glyph} brush={doc.project.brush} />
             </div>
           )}
         </Section>
@@ -299,7 +300,7 @@ export function Properties({
           </Section>
         )}
         {stroke && (
-          <Section title="转折与端点">
+          <Section title="转折">
             <label className="field-title">转折方式</label>
             <div className="segmented shape-options">
               {(["miter", "round", "bevel"] as const).map((join, i) => (
@@ -326,29 +327,9 @@ export function Properties({
                 </button>
               ))}
             </div>
-            <label className="field-title spaced">端点样式</label>
-            <div className="segmented shape-options">
-              {(["butt", "round", "square"] as const).map((cap, i) => (
-                <button
-                  key={cap}
-                  className={stroke.cap === cap ? "active" : ""}
-                  disabled={stroke.locked}
-                  onClick={() => changeStroke({ cap })}
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24">
-                    <path
-                      d="M6 12h12"
-                      stroke="currentColor"
-                      strokeWidth="7"
-                      strokeLinecap={cap}
-                    />
-                  </svg>
-                  <span>{["平头", "圆头", "方头"][i]}</span>
-                </button>
-              ))}
-            </div>
           </Section>
         )}
+        <BrushControls doc={doc} />
         <Section title="外观">
           <div className="color-row">
             <label className="color-swatch" style={{ background: glyph.color }}>

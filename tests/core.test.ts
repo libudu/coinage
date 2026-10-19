@@ -12,7 +12,9 @@ import {
 } from "../src/core/model";
 import { defaultTrace, makeMask, traceRaster } from "../src/features/tracing/trace";
 import type { Raster } from "../src/features/tracing/trace";
-import type { Point } from "../src/core/model";
+import type { Point, Project } from "../src/core/model";
+import { brushPresets, changeGlobalBrush, defaultBrush, migrateProjectBrush } from "../src/core/brush";
+import { tipIsConnected } from "../src/core/model";
 
 // SVG's default nonzero fill rule, for checking the actual filled outline.
 function pathCoverage(path: string): (point: Point) => boolean {
@@ -267,4 +269,384 @@ test("smooth handles keep independent lengths while symmetric handles mirror", (
     };
   assert.equal(controls([a, b], 0)[1].x, 280);
   assert.equal(controls([a, { ...b, mode: "symmetric" }], 0)[1].x, 240);
+});
+
+function brushFixture(length = 400, width = 40) {
+  const g = emptyGlyph("笔锋");
+  g.nodes.a = { id: "a", x: 100, y: 100, width, mode: "corner" };
+  g.nodes.b = { id: "b", x: 100 + length, y: 100, width, mode: "corner" };
+  const s = newStroke(["a", "b"], 0);
+  g.strokes = [s];
+  return { g, s, brush: structuredClone(defaultBrush) };
+}
+
+test("all eight brush presets have distinct slanted ends and a constant-width body", () => {
+  const { g, s, brush } = brushFixture();
+  const paths = new Set<string>();
+  for (const preset of brushPresets) {
+    brush.startTip = preset.start;
+    brush.endTip = preset.end;
+    const path = outlinePath(g, s, brush);
+    paths.add(path);
+    // Reference shape: 40px body, 54px end and a 12px diagonal cut.
+    const startX = preset.start === "horizontal" ? 106 : 94;
+    const endX = preset.end === "horizontal" ? 506 : 494;
+    assert.ok(path.includes(preset.start === "none" ? "100,120" : `${startX},127`));
+    assert.ok(path.includes(preset.end === "none" ? "500,120" : `${endX},127`));
+    const contains = pathCoverage(path);
+    assert.ok(contains({ x: 300, y: 119 }));
+    assert.ok(!contains({ x: 300, y: 121 }));
+    const svg = exportSvg(g, brush);
+    assert.ok(svg.includes(path));
+    assert.ok(!svg.includes("<image"));
+  }
+  assert.equal(paths.size, 8);
+});
+
+test("changing either brush end leaves the opposite end and stored knots unchanged", () => {
+  const { g, s, brush } = brushFixture();
+  brush.startTip = "horizontal";
+  brush.endTip = "vertical";
+  const knots = structuredClone(g.nodes);
+  const before = pathCoverage(outlinePath(g, s, brush));
+  brush.startTip = "vertical";
+  const afterStart = pathCoverage(outlinePath(g, s, brush));
+  for (let x = 300.3; x < 520; x += 3)
+    for (let y = 65.3; y < 135; y += 3)
+      assert.equal(before({ x, y }), afterStart({ x, y }));
+  brush.endTip = "horizontal";
+  const afterEnd = pathCoverage(outlinePath(g, s, brush));
+  for (let x = 80.3; x < 300; x += 3)
+    for (let y = 65.3; y < 135; y += 3)
+      assert.equal(afterStart({ x, y }), afterEnd({ x, y }));
+  assert.deepEqual(g.nodes, knots);
+});
+
+test("brushes rotate with the path and scale with local width", () => {
+  const { g, s, brush } = brushFixture();
+  brush.startTip = "horizontal";
+  brush.endTip = "vertical";
+  const vertices = (d: string) => [...d.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)]
+    .map(([, x, y]) => ({ x: +x, y: +y }));
+  const original = vertices(outlinePath(g, s, brush));
+  for (const n of Object.values(g.nodes)) {
+    const x = n.x;
+    n.x = 200 - n.y;
+    n.y = x;
+  }
+  assert.deepEqual(vertices(outlinePath(g, s, brush)), original.map(({ x, y }) => ({ x: 200 - y, y: x })));
+  g.nodes.a.width = 20;
+  g.nodes.b.width = 80;
+  const tapered = outlinePath(g, s, brush);
+  assert.ok(tapered.includes("86.5,103"));
+  assert.ok(tapered.includes("46,488"));
+});
+
+test("short, wide strokes keep ordered sides and an unflared middle", () => {
+  for (const length of [0.1, 1, 5, 20]) {
+    const { g, s, brush } = brushFixture(length, 200);
+    for (const preset of brushPresets) {
+      brush.startTip = preset.start;
+      brush.endTip = preset.end;
+      const path = outlinePath(g, s, brush);
+      assert.ok(!/NaN|Infinity/.test(path));
+      assert.ok(containsPoint(path, { x: 100 + length / 2, y: 100 }));
+      const lower = [...path.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)]
+        .map(([, x, y]) => ({ x: +x, y: +y })).filter((p) => p.y > 100);
+      assert.ok(lower.every((p, i) => i === 0 || p.x >= lower[i - 1].x));
+      assert.ok(!containsPoint(path, { x: 100 + length / 2, y: 201 }));
+    }
+  }
+});
+
+test("brush flares end before an interior knot and follow curved strokes", () => {
+  const { g, s, brush } = brushFixture();
+  g.nodes.c = { id: "c", x: 120, y: 100, width: 40, mode: "corner" };
+  s.nodes = ["a", "c", "b"];
+  brush.startTip = "horizontal";
+  brush.endTip = "none";
+  const path = outlinePath(g, s, brush);
+  assert.ok(path.includes("116,120"));
+  assert.ok(!containsPoint(path, { x: 120, y: 123 }));
+  g.nodes.a.mode = "smooth";
+  g.nodes.a.handle = { x: 0, y: 100 };
+  s.nodes = ["a", "b"];
+  const curve = outlinePath(g, s, brush);
+  assert.ok(!/NaN|Infinity/.test(curve));
+  assert.ok(containsPoint(curve, { x: 100, y: 110 }));
+  assert.ok(!containsPoint(curve, { x: 300, y: 100 }));
+});
+
+test("shared, branching and closed endpoints suppress brushes without deleting settings", () => {
+  for (const kind of ["continuation", "branch", "interior", "closed", "repeated"] as const) {
+    const { g, s, brush } = brushFixture();
+    g.nodes.c = { id: "c", x: 500, y: 300, width: 40, mode: "corner" };
+    g.nodes.d = { id: "d", x: 600, y: 100, width: 40, mode: "corner" };
+    if (kind === "closed") s.nodes = ["b", "a", "c", "b"];
+    else if (kind === "repeated") s.nodes = ["a", "b", "c", "b"];
+    else {
+      const peer = newStroke(kind === "interior" ? ["c", "b", "d"] : ["b", "c"], 1);
+      peer.locked = true;
+      g.strokes.push(peer);
+      if (kind === "branch") g.strokes.push(newStroke(["b", "d"], 2));
+    }
+    const plain = outlinePath(g, s, brush);
+    assert.ok(tipIsConnected(g, s, "end"), kind);
+    brush.endTip = "horizontal";
+    if (kind === "closed") brush.startTip = "vertical";
+    const before = structuredClone(g);
+    assert.equal(outlinePath(g, s, brush), plain, kind);
+    assert.deepEqual(g, before);
+  }
+});
+
+test("hiding or disconnecting a peer restores a saved brush", () => {
+  const { g, s, brush } = brushFixture();
+  brush.endTip = "horizontal";
+  const isolated = outlinePath(g, s, brush);
+  g.nodes.c = { id: "c", x: 500, y: 300, width: 40, mode: "corner" };
+  const peer = newStroke(["b", "c"], 1);
+  g.strokes.push(peer);
+  assert.notEqual(outlinePath(g, s, brush), isolated);
+  peer.visible = false;
+  assert.equal(outlinePath(g, s, brush), isolated);
+  peer.visible = true;
+  g.nodes.copy = { ...g.nodes.b, id: "copy" };
+  peer.nodes[0] = "copy";
+  assert.equal(outlinePath(g, s, brush), isolated);
+});
+
+test("optional brush fields preserve v1 projects and reject malformed values", () => {
+  const p = demoProject();
+  const s = p.glyphs[0].strokes[0];
+  s.cap = "round";
+  const oldSvg = exportSvg(p.glyphs[0]);
+  const old = JSON.parse(JSON.stringify(p));
+  assert.ok(isProject(old));
+  assert.equal(exportSvg(old.glyphs[0]), oldSvg);
+  s.startTip = "horizontal";
+  s.endTip = "none";
+  const restored = JSON.parse(JSON.stringify(p));
+  assert.ok(isProject(restored));
+  assert.equal(exportSvg(restored.glyphs[0]), exportSvg(p.glyphs[0]));
+  for (const key of ["startTip", "endTip"]) {
+    for (const value of [null, "round", "<script>", 0, {}, []]) {
+      const invalid = structuredClone(restored);
+      invalid.glyphs[0].strokes[0][key] = value;
+      assert.equal(isProject(invalid), false);
+    }
+  }
+});
+
+test("default brush tuning exactly preserves existing presets", () => {
+  for (const length of [1, 20, 400]) {
+    const { g, s, brush } = brushFixture(length);
+    for (const preset of brushPresets) {
+      brush.startTip = preset.start;
+      brush.endTip = preset.end;
+      brush.startBrush = { ...defaultBrush.startBrush };
+      brush.endBrush = { ...defaultBrush.endBrush };
+      const original = outlinePath(g, s, brush);
+      brush.startBrush = { length: 100, spread: 100 };
+      brush.endBrush = { length: 100, spread: 100 };
+      assert.equal(outlinePath(g, s, brush), original);
+    }
+  }
+});
+
+test("brush length changes the shoulder reach while spread changes end width", () => {
+  const { g, s, brush } = brushFixture();
+  brush.startTip = "horizontal";
+  brush.endTip = "none";
+  brush.startBrush = { length: 200, spread: 100 };
+  const long = outlinePath(g, s, brush);
+  assert.ok(long.includes("196,120"));
+  assert.ok(long.includes("106,127"));
+  assert.ok(containsPoint(long, { x: 170, y: 121 }));
+  brush.startBrush.spread = 200;
+  const wide = outlinePath(g, s, brush);
+  assert.ok(wide.includes("196,120"));
+  assert.ok(wide.includes("106,134"));
+  brush.startBrush.spread = 0;
+  const flat = outlinePath(g, s, brush);
+  assert.ok(flat.includes("106,120"));
+  assert.ok(!containsPoint(flat, { x: 170, y: 121 }));
+  brush.startBrush = { length: 25, spread: 100 };
+  const short = outlinePath(g, s, brush);
+  assert.ok(short.includes("112,120"));
+  assert.ok(!containsPoint(short, { x: 130, y: 121 }));
+});
+
+test("start and end brush tuning remain independent and do not mutate knots", () => {
+  const { g, s, brush } = brushFixture();
+  brush.startTip = "horizontal";
+  brush.endTip = "vertical";
+  const knots = structuredClone(g.nodes);
+  const before = pathCoverage(outlinePath(g, s, brush));
+  brush.startBrush = { length: 200, spread: 200 };
+  const changedStart = pathCoverage(outlinePath(g, s, brush));
+  for (let x = 310.3; x < 520; x += 3)
+    for (let y = 60.3; y < 140; y += 3)
+      assert.equal(before({ x, y }), changedStart({ x, y }));
+  brush.endBrush = { length: 150, spread: 25 };
+  const changedEnd = pathCoverage(outlinePath(g, s, brush));
+  for (let x = 80.3; x < 290; x += 3)
+    for (let y = 60.3; y < 140; y += 3)
+      assert.equal(changedStart({ x, y }), changedEnd({ x, y }));
+  assert.deepEqual(g.nodes, knots);
+});
+
+test("maximum brush tuning respects short strokes, knots and occupied endpoints", () => {
+  for (const length of [0.1, 1, 20, 400]) {
+    const { g, s, brush } = brushFixture(length, 200);
+    brush.startTip = "horizontal";
+    brush.endTip = "vertical";
+    brush.startBrush = { length: 250, spread: 200 };
+    brush.endBrush = { length: 250, spread: 200 };
+    const d = outlinePath(g, s, brush);
+    assert.ok(!/NaN|Infinity/.test(d));
+    assert.ok(containsPoint(d, { x: 100 + length / 2, y: 100 }));
+    assert.ok(!containsPoint(d, { x: 100 + length / 2, y: 201 }));
+  }
+  const { g, s, brush } = brushFixture();
+  g.nodes.c = { id: "c", x: 120, y: 100, width: 40, mode: "corner" };
+  s.nodes = ["a", "c", "b"];
+  brush.startTip = "horizontal";
+  brush.startBrush = { length: 250, spread: 200 };
+  assert.ok(!containsPoint(outlinePath(g, s, brush), { x: 120, y: 123 }));
+  g.nodes.d = { id: "d", x: 100, y: 300, width: 40, mode: "corner" };
+  g.strokes.push(newStroke(["a", "d"], 1));
+  const connected = outlinePath(g, s, brush);
+  brush.startBrush = { length: 25, spread: 0 };
+  assert.equal(outlinePath(g, s, brush), connected);
+});
+
+test("v1 brush tuning survives JSON and SVG export and validates both ends", () => {
+  const p = demoProject();
+  const g = p.glyphs[0];
+  const brush = p.brush = structuredClone(defaultBrush);
+  brush.startTip = "horizontal";
+  brush.endTip = "vertical";
+  brush.startBrush = { length: 200, spread: 0 };
+  brush.endBrush = { length: 25, spread: 200 };
+  const restored = JSON.parse(JSON.stringify(p));
+  assert.ok(isProject(restored));
+  assert.equal(exportSvg(restored.glyphs[0], restored.brush), exportSvg(g, brush));
+  for (const key of ["startBrush", "endBrush"]) {
+    for (const value of [
+      null, [], {}, "100", { length: 100 }, { spread: 100 },
+      { length: 24, spread: 100 }, { length: 251, spread: 100 },
+      { length: 100, spread: -1 }, { length: 100, spread: 201 },
+      { length: NaN, spread: 100 }, { length: 100, spread: Infinity },
+      { length: "100", spread: 100 },
+    ]) {
+      const invalid = structuredClone(restored);
+      invalid.brush[key] = value;
+      assert.equal(isProject(invalid), false);
+    }
+  }
+});
+
+test("global brushes apply to all glyphs and new strokes through the same export geometry", () => {
+  const first = brushFixture(), second = brushFixture(300);
+  const p: Project = { version: 1, name: "global", activeId: first.g.id, glyphs: [first.g, second.g] };
+  changeGlobalBrush(p, {
+    startTip: "horizontal", endTip: "vertical",
+    startBrush: { length: 150, spread: 180 }, endBrush: { length: 70, spread: 40 },
+  });
+  for (const g of p.glyphs) {
+    const s = g.strokes[0];
+    const before = structuredClone(s);
+    const path = outlinePath(g, s, p.brush);
+    assert.equal(glyphPath(g, p.brush), path);
+    assert.ok(exportSvg(g, p.brush).includes(path));
+    assert.notEqual(path, outlinePath(g, s));
+    assert.deepEqual(s, before);
+  }
+  const fresh = newStroke(["a", "b"], 1);
+  assert.equal(outlinePath({ ...first.g, strokes: [fresh] }, fresh, p.brush), outlinePath(first.g, first.s, p.brush));
+});
+
+test("legacy endpoint overrides cannot change global rendering", () => {
+  const { g, s } = brushFixture();
+  const p: Project = { version: 1, name: "legacy", activeId: g.id, glyphs: [g] };
+  changeGlobalBrush(p, { startTip: "horizontal", endTip: "vertical" });
+  const expected = outlinePath(g, s, p.brush);
+  s.startTip = "basic";
+  s.endTip = "horizontal";
+  s.startBrush = { length: 65, spread: 170 };
+  s.endBrush = { length: 250, spread: 0 };
+  assert.equal(outlinePath(g, s, p.brush), expected);
+  const clean = { ...newStroke(["a", "b"], 1), id: s.id };
+  const plain = outlinePath(g, clean);
+  assert.equal(outlinePath(g, s), plain);
+  changeGlobalBrush(p, { startTip: "vertical", startBrush: { length: 200, spread: 0 } });
+  assert.notEqual(outlinePath(g, s, p.brush), expected);
+  assert.equal(outlinePath(g, s, p.brush), outlinePath(g, clean, p.brush));
+});
+
+test("global changes apply to locked strokes without modifying their nodes or lock state", () => {
+  for (const cap of ["round", "square", "butt"] as const) {
+    const { g, s } = brushFixture();
+    s.cap = cap;
+    s.locked = true;
+    const p: Project = { version: 1, name: "locked", activeId: g.id, glyphs: [g] };
+    const geometry = structuredClone(g);
+    const before = outlinePath(g, s);
+    changeGlobalBrush(p, { startTip: "horizontal", endTip: "vertical" });
+    const first = outlinePath(g, s, p.brush);
+    assert.notEqual(first, before);
+    changeGlobalBrush(p, { startBrush: { length: 250, spread: 200 } });
+    assert.notEqual(outlinePath(g, s, p.brush), first);
+    assert.deepEqual(g, geometry);
+    assert.ok(isProject(p));
+  }
+});
+
+test("global brush changes still avoid connected endpoints", () => {
+  const { g, s } = brushFixture();
+  g.nodes.c = { id: "c", x: 500, y: 300, width: 40, mode: "corner" };
+  g.strokes.push(newStroke(["b", "c"], 1));
+  const p: Project = { version: 1, name: "connected", activeId: g.id, glyphs: [g] };
+  const before = outlinePath(g, s);
+  changeGlobalBrush(p, { endTip: "horizontal", endBrush: { length: 250, spread: 200 } });
+  assert.equal(outlinePath(g, s, p.brush), before);
+  g.strokes[1].visible = false;
+  assert.notEqual(outlinePath(g, s, p.brush), before);
+});
+
+test("v1 migration removes all local overrides while preserving global settings and geometry", () => {
+  for (const hasGlobal of [false, true]) {
+    const p = demoProject();
+    if (hasGlobal) changeGlobalBrush(p, { startTip: "vertical", startBrush: { length: 180, spread: 60 } });
+    const expected = structuredClone(p);
+    for (const g of p.glyphs) for (const s of g.strokes) {
+      s.startTip = "horizontal";
+      s.endTip = "basic";
+      s.startBrush = { length: 40, spread: 180 };
+      s.endBrush = { length: 250, spread: 0 };
+    }
+    assert.ok(isProject(p));
+    const migrated = migrateProjectBrush(JSON.parse(JSON.stringify(p)));
+    assert.deepEqual(migrated, expected);
+    assert.deepEqual(migrateProjectBrush(migrated), expected);
+    assert.ok(isProject(migrated));
+  }
+});
+
+test("global defaults persist in v1 JSON, validate nested fields and restore with project snapshots", () => {
+  const p = demoProject();
+  const before = structuredClone(p);
+  changeGlobalBrush(p, { startTip: "horizontal", endTip: "vertical" });
+  const restored: Project = JSON.parse(JSON.stringify(p));
+  assert.ok(isProject(restored));
+  assert.deepEqual(restored.brush, p.brush);
+  assert.equal(exportSvg(restored.glyphs[0], restored.brush), exportSvg(p.glyphs[0], p.brush));
+  assert.equal(before.brush, undefined);
+  assert.ok(isProject(before));
+  for (const brush of [null, [], {}, { ...defaultBrush, startTip: "basic" },
+    { ...defaultBrush, endBrush: { length: 0, spread: 100 } },
+    { ...defaultBrush, startBrush: null }]) {
+    assert.equal(isProject({ ...p, brush }), false);
+  }
 });

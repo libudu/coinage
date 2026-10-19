@@ -76,7 +76,7 @@ export function EditorCanvas({
   );
   const outlines = glyph.strokes
     .filter((s) => s.visible)
-    .map((s) => ({ stroke: s, path: outlinePath(glyph, s) }));
+    .map((s) => ({ stroke: s, path: outlinePath(glyph, s, doc.project.brush) }));
   if (penTail.current && glyph.nodes[penTail.current])
     visibleIds.add(penTail.current);
   const nodeLocked = (id: string) =>
@@ -210,7 +210,9 @@ export function EditorCanvas({
     if (kind === "node" && id) {
       select(
         id,
-        glyph.strokes.find((s) => s.nodes.includes(id!) && s.visible)?.id,
+        (stroke?.visible && stroke.nodes.includes(id)
+          ? stroke
+          : glyph.strokes.find((s) => s.nodes.includes(id!) && s.visible))?.id,
       );
       if (tool === "pen") {
         const tail = penTail.current;

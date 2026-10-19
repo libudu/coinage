@@ -7,6 +7,7 @@ import {
   isProject,
   uid,
 } from "../core/model";
+import { migrateProjectBrush } from "../core/brush";
 import { Icon } from "../shared/components/Icon";
 import { GlyphPreview } from "../features/editor/GlyphPreview";
 import { IconButton } from "../shared/components/controls";
@@ -97,7 +98,7 @@ export default function App() {
       if (file.size > 30 * 1024 * 1024) throw new Error();
       const value: unknown = JSON.parse(await file.text());
       if (!isProject(value)) throw new Error();
-      doc.replace(value);
+      doc.replace(migrateProjectBrush(value));
       select(null, null);
       setToast("手稿已打开");
     } catch {
@@ -114,13 +115,13 @@ export default function App() {
     setToast("手稿已导出");
   };
   const saveSvg = () => {
-    download(exportSvg(glyph), `${safeName(glyph.name)}.svg`, "image/svg+xml");
+    download(exportSvg(glyph, project.brush), `${safeName(glyph.name)}.svg`, "image/svg+xml");
     setMenu(null);
     setToast("SVG 已导出");
   };
   const savePng = () => {
     const url = URL.createObjectURL(
-        new Blob([exportSvg(glyph)], { type: "image/svg+xml" }),
+        new Blob([exportSvg(glyph, project.brush)], { type: "image/svg+xml" }),
       ),
       img = new Image();
     img.onload = () => {
@@ -452,7 +453,7 @@ export default function App() {
                 onClick={() => switchGlyph(g.id)}
               >
                 <div className="glyph-thumb">
-                  <GlyphPreview glyph={g} />
+                  <GlyphPreview glyph={g} brush={project.brush} />
                 </div>
                 <span className="glyph-card-text">
                   <strong>{g.name}</strong>

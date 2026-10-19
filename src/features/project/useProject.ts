@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { demoProject, isProject } from "../../core/model";
+import { migrateProjectBrush } from "../../core/brush";
 import type { Glyph, Project } from "../../core/model";
 const KEY = "coinage.studio.v1";
 function initial() {
   try {
     const p: unknown = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (isProject(p)) return p;
+    if (isProject(p)) return migrateProjectBrush(p);
   } catch {}
   return demoProject();
 }
