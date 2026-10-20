@@ -1,6 +1,5 @@
 import { TransactionalRange } from "./TransactionalRange";
 import type { TransactionId } from "../project/projectStore";
-import type { ReactNode } from "react";
 import { clamp, distance } from "../../core/geometry";
 import type { Knot, Stroke } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
@@ -8,12 +7,12 @@ import { BrushControls } from "./BrushControls";
 import { IconButton, NumberField, Section, segmentedStateClasses } from "../../shared/components/controls";
 import { useActiveGlyph, useProject, useProjectActions } from "../project/useProject";
 import { selectionLocked, translateNodes } from "./nodeSelection";
-type Props = {
-  exportActions: ReactNode;
-};
+import { GlyphExport } from "./GlyphExport";
+import type { GlyphExportProps } from "./GlyphExport";
+
 export function Properties({
-  exportActions,
-}: Props) {
+  onExportSvg, onExportPng,
+}: GlyphExportProps) {
   const glyph = useActiveGlyph();
   const nodeIds = useProject((s) => s.session.nodeIds);
   const nodeId = nodeIds.at(-1) ?? null;
@@ -312,7 +311,7 @@ export function Properties({
       {!nodes.length && !stroke && (
         <div className="shrink-0 border-t [border-top-style:solid] border-t-[var(--border)] px-[20px] py-[16px]
           wide:px-[25px] laptop:px-[16px] tablet:px-[14px]">
-          {exportActions}
+          <GlyphExport onExportSvg={onExportSvg} onExportPng={onExportPng} />
         </div>
       )}
     </aside>

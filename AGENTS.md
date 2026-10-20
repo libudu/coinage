@@ -10,7 +10,8 @@ Coinage 是本地造字工具，使用 React、TypeScript、Vite 和 Tailwind CS
 src/
 ├── main.tsx                    # React 入口与全局样式加载
 ├── app/
-│   ├── App.tsx                # 工作台组装、菜单与弹窗状态
+│   ├── App.tsx                # 页面切换、工作台组装、菜单与弹窗状态
+│   ├── AppNavigation.tsx      # 左侧字库、造字与特效导航
 │   └── App.css                # 提示动画关键帧，由 App.tsx 导入
 ├── core/
 │   ├── model.ts               # 数据类型、ID 与空字形/笔画工厂
@@ -21,6 +22,8 @@ src/
 │   ├── demo.ts                # 初始示例手稿
 │   └── brush.ts               # 笔锋预设、全局配置与端部轮廓
 ├── features/
+│   ├── library/
+│   │   └── GlyphLibrary.tsx   # 造句预览、缺字空格与全部字形入口
 │   ├── editor/
 │   │   ├── EditorCanvas.tsx    # 画布视口、工具栏、标尺与视图快捷键
 │   │   ├── EditorCanvas.css    # 画布纹理、标尺背景与组合光标状态
@@ -32,8 +35,9 @@ src/
 │   │   ├── useEditorCommands.ts # 删除、复制、撤销重做与编辑快捷键
 │   │   ├── nodeSelection.ts    # 节点集合、锁定保护、整体位移与批量删除
 │   │   ├── Properties.tsx      # 节点、笔画、笔锋和外观属性
+│   │   ├── GlyphExport.tsx     # 属性栏导出按钮与格式菜单状态
 │   │   ├── EditorContextMenu.tsx # 字符、笔画与节点操作右键菜单
-│   │   ├── RenameGlyphDialog.tsx # 字符重命名弹窗
+│   │   ├── GlyphBasicInfoDialog.tsx # 字符对应汉语与描述编辑弹窗
 │   │   ├── BrushControls.tsx   # 全局起收笔与快捷预设
 │   │   ├── BrushTuning.tsx     # 折叠式笔锋长度、张开调节
 │   │   ├── TransactionalRange.tsx # 手稿滑块的指针、键盘与事务边界
@@ -73,6 +77,7 @@ tests/projectPatch.test.ts      # 字段增量、原图省略、顺序与补丁�
 tests/projectStore.test.ts      # 状态、事务、历史、选择与锁定测试
 tests/projectAutosave.test.ts   # 保存触发、重试、冲突与过期响应测试
 tests/editorTransactions.test.ts # jsdom 组件事件与事务边界回归测试
+tests/workspaceNavigation.test.ts # 字库预览、基本信息、页面切换与快捷键隔离测试
 tests/support/domLoader.mjs     # 组件测试中的样式导入适配
 tests/package.smoke.ts          # 解压分发 ZIP 后验证便携 Node、重启与端口
 tests/packageZip.test.ts        # 分发清单、中文文件名、排除手稿与 ZIP 替换测试

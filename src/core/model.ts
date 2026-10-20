@@ -21,7 +21,9 @@ export type Stroke = {
 };
 export type Glyph = {
   id: string;
+  // 对应汉语，同时用于标题和造句匹配，可为空。
   name: string;
+  description?: string;
   nodes: Record<string, Knot>;
   strokes: Stroke[];
   color: string;

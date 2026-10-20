@@ -3,16 +3,19 @@ import { buttonStateClasses } from "../../shared/components/controls";
 
 type Props = {
   name: string;
-  onConfirm: (name: string) => void;
+  description: string;
+  onConfirm: (info: { name: string; description: string }) => void;
   onClose: () => void;
 };
 
-export function RenameGlyphDialog({ name, onConfirm, onClose }: Props) {
+export function GlyphBasicInfoDialog({ name, description, onConfirm, onClose }: Props) {
   const [value, setValue] = useState(name);
+  const [descriptionValue, setDescriptionValue] = useState(description);
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const titleId = useId();
   const inputId = useId();
+  const descriptionId = useId();
 
   useEffect(() => {
     const element = dialog.current!;
@@ -42,18 +45,25 @@ export function RenameGlyphDialog({ name, onConfirm, onClose }: Props) {
         className="p-[27px]"
         onSubmit={(e) => {
           e.preventDefault();
-          if (value.trim()) onConfirm(value.trim());
+          onConfirm({ name: value.trim(), description: descriptionValue.trim() });
         }}
       >
-        <h2 id={titleId} className="m-0 mb-[23px] text-[20px] font-semibold tracking-[1px]">重命名字符</h2>
-        <label htmlFor={inputId} className="block mb-[9px] text-[12px] text-[#77856a]">字符名称</label>
+        <h2 id={titleId} className="m-0 mb-[23px] text-[20px] font-semibold tracking-[1px]">编辑基本信息</h2>
+        <label htmlFor={inputId} className="block mb-[9px] text-[12px] text-[#77856a]">对应汉语</label>
         <input
           ref={input}
           id={inputId}
           autoFocus
-          required
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          className="w-full min-w-0 h-[38px] px-[11px] bg-[#f0f3ea] border [border-style:solid]
+            border-[#dce3d3] rounded-[5px] text-[13px] text-[#4b5845]"
+        />
+        <label htmlFor={descriptionId} className="block mb-[9px] mt-[18px] text-[12px] text-[#77856a]">描述</label>
+        <input
+          id={descriptionId}
+          value={descriptionValue}
+          onChange={(e) => setDescriptionValue(e.target.value)}
           className="w-full min-w-0 h-[38px] px-[11px] bg-[#f0f3ea] border [border-style:solid]
             border-[#dce3d3] rounded-[5px] text-[13px] text-[#4b5845]"
         />
@@ -62,7 +72,7 @@ export function RenameGlyphDialog({ name, onConfirm, onClose }: Props) {
             className={`h-[35px] px-[15px] border [border-style:solid] border-[#dfe4d7] rounded-[6px] text-[12px] ${buttonStateClasses}`}>
             取消
           </button>
-          <button type="submit" disabled={!value.trim()}
+          <button type="submit"
             className={`primary h-[35px] px-[15px] border [border-style:solid] rounded-[6px] text-[12px] ${buttonStateClasses}`}>
             确认
           </button>

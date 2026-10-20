@@ -28,6 +28,7 @@ export function isProject(value: unknown): value is Project {
         (g) =>
           typeof g.id === "string" &&
           typeof g.name === "string" &&
+          (g.description === undefined || typeof g.description === "string") &&
           /^#[0-9a-f]{6}$/i.test(g.color) &&
           (!g.reference ||
             /^data:image\/(png|jpeg|webp);base64,/.test(g.reference)) &&

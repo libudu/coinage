@@ -10,10 +10,9 @@ type Options = {
   importing: boolean;
   shortcuts: boolean;
   setShortcuts: (open: boolean) => void;
-  closeMenu: () => void;
 };
 
-export function useEditorCommands({ toast, importing, shortcuts, setShortcuts, closeMenu }: Options) {
+export function useEditorCommands({ toast, importing, shortcuts, setShortcuts }: Options) {
   const api = useProjectApi();
   const actions = useProjectActions();
   const nudge = useRef<{ id: TransactionId; key: string } | null>(null);
@@ -50,7 +49,7 @@ export function useEditorCommands({ toast, importing, shortcuts, setShortcuts, c
         e.preventDefault();
         if (nodeIds.length || strokeId) remove();
       }
-      if (e.key === "Escape") { actions.select(null, null); closeMenu(); }
+      if (e.key === "Escape") actions.select(null, null);
       if (e.key === "?") setShortcuts(true);
       if (nodeIds.length && !e.altKey && arrowKeys.has(e.key)) {
         e.preventDefault();

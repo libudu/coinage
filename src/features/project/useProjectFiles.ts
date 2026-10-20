@@ -5,12 +5,10 @@ import { useProjectActions, useProjectApi } from "./useProject";
 import { activeGlyph } from "./projectStore";
 
 type Options = {
-  closeMenu: () => void;
   toast: (message: string) => void;
 };
 
 export function useProjectFiles({
-  closeMenu,
   toast,
 }: Options) {
   const api = useProjectApi();
@@ -39,7 +37,6 @@ export function useProjectFiles({
       "手稿应急副本.coinage.json",
       "application/json",
     );
-    closeMenu();
     toast("手稿已导出");
   };
   const saveSvg = () => {
@@ -50,7 +47,6 @@ export function useProjectFiles({
       `${safeName(glyph.name)}.svg`,
       "image/svg+xml",
     );
-    closeMenu();
     toast("SVG 已导出");
   };
   const savePng = () => {
@@ -82,7 +78,6 @@ export function useProjectFiles({
       toast("PNG 导出失败");
     };
     img.src = url;
-    closeMenu();
   };
   return {
     source, setSource, importFile, exportProject, saveSvg, savePng,

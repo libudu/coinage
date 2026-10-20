@@ -41,6 +41,7 @@ export function GlyphSidebar({
         {glyphs.map((g, index) => (
           <button
             key={g.id}
+            aria-label={g.name || `字符 ${String(index + 1).padStart(2, "0")}`}
             className={`glyph-card ${g.id === glyph.id ? "selected" : ""} flex items-center gap-[13px] text-left min-h-[83px]
               p-[9px] border [border-style:solid] border-[transparent] rounded-[8px] relative wide:min-h-[93px]
               laptop:gap-[9px] laptop:p-[7px] tablet:min-h-[70px] tablet:gap-[7px] compact:min-h-[87px] compact:py-[8px]
@@ -60,11 +61,11 @@ export function GlyphSidebar({
             </div>
             <span className="glyph-card-text min-w-0 flex flex-col gap-[8px] [&_strong]:text-[12px] [&_strong]:font-[550]
               [&_strong]:max-w-[95px] [&_strong]:whitespace-nowrap [&_strong]:overflow-hidden [&_strong]:text-ellipsis
-              [&_small]:[font-family:ui-monospace,_monospace] [&_small]:text-[12px] [&_small]:text-[#929a89]
+              [&_small]:text-[12px] [&_small]:text-[#a0a69b] [&_small]:truncate [&_small]:max-w-full
               wide:[&_strong]:max-w-[110px] laptop:[&_strong]:max-w-[75px] tablet:[&_strong]:max-w-[62px]
-              tablet:gap-[5px] compact:[&_strong]:max-w-[61px] compact:[&_small]:hidden">
-              <strong>{g.name}</strong>
-              <small>{String(index + 1).padStart(2, "0")}</small>
+              tablet:gap-[5px] compact:[&_strong]:max-w-[61px] compact:[&_small]:max-w-[61px]">
+              {g.name && <strong title={g.name}>{g.name}</strong>}
+              {g.description && <small title={g.description}>{g.description}</small>}
             </span>
             {g.id === glyph.id && <span className="glyph-active-dot w-[5px] h-[5px] bg-[#7d9c58] rounded-[50%] ml-auto mr-[3px] tablet:hidden" />}
           </button>

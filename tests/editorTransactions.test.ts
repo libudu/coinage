@@ -30,6 +30,7 @@ const { ProjectProvider, useProjectApi } = await import("../src/features/project
 const { useCanvasInteraction } = await import("../src/features/editor/useCanvasInteraction");
 const { BrushTuning } = await import("../src/features/editor/BrushTuning");
 const { Properties } = await import("../src/features/editor/Properties");
+const { GlyphExport } = await import("../src/features/editor/GlyphExport");
 
 function manuscript(): Project {
   const glyph = emptyGlyph("甲");
@@ -58,6 +59,40 @@ function CanvasProbe() {
     onPointerCancel: (e) => interaction.end(e, true), onLostPointerCapture: (e) => interaction.end(e) },
   h("svg", { ref: svg }, h("circle", { "data-node": "a", onPointerDown: (e) => interaction.start(e, "branch", "a") })));
 }
+
+test("glyph export owns its menu and dispatches SVG and PNG actions before closing", async (t) => {
+  const calls: string[] = [];
+  const { container } = await render(t, () => h(GlyphExport, {
+    onExportSvg: () => { calls.push("svg"); }, onExportPng: () => { calls.push("png"); },
+  }));
+  const toggle = container.querySelector<HTMLButtonElement>('button[aria-label="更多导出格式"]')!;
+  const click = async (element: HTMLElement) => { await act(async () => element.click()); };
+  await click(container.querySelector("button")!);
+  assert.deepEqual(calls, ["svg"]);
+  await click(toggle);
+  const menu = container.querySelector(".export-dropdown")!;
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  // 菜单内部的指针事件不能提前关闭菜单，阻断后续的点击导出。
+  await pointer(menu.querySelectorAll("button")[1], "pointerdown", 1);
+  assert.ok(container.querySelector(".export-dropdown"));
+  await click(menu.querySelectorAll("button")[1]);
+  assert.deepEqual(calls, ["svg", "png"]);
+  assert.equal(container.querySelector(".export-dropdown"), null);
+  await click(toggle);
+  await click(container.querySelector(".export-dropdown button")!);
+  assert.deepEqual(calls, ["svg", "png", "svg"]);
+  for (const close of [
+    async () => pointer(document.body, "pointerdown", 1),
+    async () => act(async () => { toggle.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); }),
+    async () => act(async () => { document.body.dispatchEvent(new dom.window.Event("focusin", { bubbles: true })); }),
+  ]) {
+    await click(toggle);
+    await close();
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(container.querySelector(".export-dropdown"), null);
+  }
+  assert.deepEqual(calls, ["svg", "png", "svg"]);
+});
 async function pointer(target: Element, type: string, id: number, x = 100, y = 100) {
   const event = new dom.window.MouseEvent(type, { bubbles: true, cancelable: true, button: 0, clientX: x, clientY: y });
   Object.defineProperties(event, { pointerId: { value: id }, isPrimary: { value: id === 1 } });
@@ -161,7 +196,7 @@ test("pointer cancellation from another touch cannot cancel a live brush adjustm
 });
 
 test("an unrelated keyup cannot split a held width adjustment into multiple history steps", async (t) => {
-  const { store, container } = await render(t, () => h(Properties, { exportActions: null }));
+  const { store, container } = await render(t, () => h(Properties, { onExportSvg: () => {}, onExportPng: () => {} }));
   const input = range(container, "笔画粗细");
   await act(async () => { input.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); });
   const id = store.getState().transaction?.id;
@@ -210,7 +245,7 @@ test("range Escape cancels the preview and a later lost-capture event cannot com
 });
 
 test("native width input stays one transaction and late input after blur is ignored", async (t) => {
-  const { store, container } = await render(t, () => h(Properties, { exportActions: null }));
+  const { store, container } = await render(t, () => h(Properties, { onExportSvg: () => {}, onExportPng: () => {} }));
   const input = range(container, "笔画粗细"), before = store.getState().project;
   await pointer(input, "pointerdown", 1);
   await inputValue(input, 40);
@@ -229,7 +264,7 @@ test("native width input stays one transaction and late input after blur is igno
 });
 
 test("a live width gesture cannot follow a selection change to another node", async (t) => {
-  const { store, container } = await render(t, () => h(Properties, { exportActions: null }));
+  const { store, container } = await render(t, () => h(Properties, { onExportSvg: () => {}, onExportPng: () => {} }));
   const input = range(container, "笔画粗细");
   await pointer(input, "pointerdown", 1);
   await inputValue(input, 40);
@@ -243,7 +278,7 @@ test("a live width gesture cannot follow a selection change to another node", as
 });
 
 test("reference opacity uses the same commit/cancel transaction rules as width", async (t) => {
-  const { store, container } = await render(t, () => h(Properties, { exportActions: null }));
+  const { store, container } = await render(t, () => h(Properties, { onExportSvg: () => {}, onExportPng: () => {} }));
   await act(async () => store.getState().actions.update((g) => { g.reference = "data:image/png;base64,AA=="; }));
   const input = range(container, "原图不透明度"), before = store.getState().project;
   await pointer(input, "pointerdown", 1);

@@ -17,6 +17,27 @@ test("node edits send only changed fields and omit unchanged reference images", 
   assert.deepEqual(createProjectPatch(next, structuredClone(next)), []);
 });
 
+test("basic information patches preserve empty values and reject non-string descriptions", () => {
+  const before = demoProject();
+  before.glyphs[0].reference = "data:image/png;base64,AAAA";
+  const next = structuredClone(before), glyph = next.glyphs[0];
+  glyph.name = "";
+  glyph.description = "补充说明";
+  const patch = createProjectPatch(before, next);
+  assert.deepEqual(patch, [
+    { op: "set", path: ["glyphs", glyph.id, "name"], value: "" },
+    { op: "set", path: ["glyphs", glyph.id, "description"], value: "补充说明" },
+  ]);
+  assert.deepEqual(applyProjectPatch(before, patch), next);
+  const empty = structuredClone(next);
+  empty.glyphs[0].description = "";
+  assert.deepEqual(applyProjectPatch(next, createProjectPatch(next, empty)), empty);
+  for (const value of [null, 1, {}, []]) {
+    assert.throws(() => applyProjectPatch(before, [{ op: "set", path: ["glyphs", glyph.id, "description"], value }]));
+  }
+  assert.deepEqual(applyProjectPatch(next, createProjectPatch(next, before)), before);
+});
+
 test("glyph additions, deletions and ordering never resend surviving glyphs or their images", () => {
   const before = demoProject();
   for (const g of before.glyphs) g.reference = `data:image/png;base64,${g.id}`;

@@ -310,11 +310,14 @@ export function EditorCanvas({
             transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
           }}
         >
-          <div className="artboard-label absolute top-[-23px] left-0 right-0 flex justify-between text-[12px] text-[#8d9880]
+          <div className="artboard-label absolute bottom-[calc(100%_+_7px)] left-0 right-0 flex items-end justify-between text-[12px] text-[#8d9880]
             pointer-events-none gap-[15px] [&>span:last-child]:[font-family:ui-monospace,_monospace]
             [&>span:last-child]:tracking-[0.5px] [&>span:first-child]:whitespace-nowrap
             [&>span:first-child]:overflow-hidden [&>span:first-child]:text-ellipsis [&>span:last-child]:shrink-0">
-            <span>{glyph.name}</span>
+            <span className="flex min-w-0 flex-col gap-[3px] [&>span]:truncate">
+              {glyph.name && <span>{glyph.name}</span>}
+              {glyph.description && <span className="text-[11px] text-[#a0a69b]">{glyph.description}</span>}
+            </span>
             <span>640 × 640</span>
           </div>
           <svg

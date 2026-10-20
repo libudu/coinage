@@ -10,7 +10,7 @@ import { selectionLocked } from "./nodeSelection";
 type Props = {
   remove: () => void;
   duplicate: () => void;
-  renameGlyph: () => void;
+  editGlyphInfo: () => void;
   toast: (s: string) => void;
   position: Point;
   onClose: () => void;
@@ -25,7 +25,7 @@ type MenuAction = {
 };
 
 export function EditorContextMenu({
-  remove, duplicate, renameGlyph, toast, position, onClose,
+  remove, duplicate, editGlyphInfo, toast, position, onClose,
 }: Props) {
   const glyph = useActiveGlyph();
   const nodeIds = useProject((s) => s.session.nodeIds);
@@ -173,7 +173,7 @@ export function EditorContextMenu({
     items.push({ label: "删除笔画", icon: "trash", action: remove, disabled: locked, danger: true });
   } else {
     items.push(
-      { label: "重命名", icon: "pen", action: renameGlyph },
+      { label: "编辑基本信息", icon: "pen", action: editGlyphInfo },
       { label: "复制字符", icon: "copy", action: () => {
         const copy = structuredClone(glyph);
         copy.id = uid();
