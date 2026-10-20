@@ -117,6 +117,7 @@ const brush: BrushDefaults = { ...defaultBrush, startTip: "horizontal" };
 async function render(
   t: TestContext,
   initialSettings: ImportSettings = defaultImportSettings,
+  filename = "甲.png",
 ) {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   workers.length = 0;
@@ -141,7 +142,7 @@ async function render(
   const root = createRoot(container),
     imported: Glyph[] = [];
   const props = {
-    source: { src: "data:image/png;base64,AA==", name: "甲.png" },
+    source: { src: "data:image/png;base64,AA==", name: filename },
     brush,
     onClose() {},
     onImport(g: Glyph) {
@@ -169,7 +170,11 @@ async function render(
       container.querySelector(".trace-preview svg")!.getAttribute("aria-busy"),
   };
 }
-async function input(container: Element, label: string, value: number) {
+async function input(
+  container: Element,
+  label: string,
+  value: number | string,
+) {
   const element = container.querySelector<HTMLInputElement>(
     `input[aria-label="${label}"]`,
   )!;
@@ -192,6 +197,98 @@ async function ready(t: TestContext) {
   assert.equal(result.busy(), "false");
   return result;
 }
+
+test("filename metadata is previewed below the artboard, updates without retracing and is used by import", async (t) => {
+  const { container, root, props, backend, imported, path, confirm } =
+    await render(t, defaultImportSettings, "狼族语_0002s_0038_朋友.png");
+  const pattern = () =>
+    container.querySelector<HTMLInputElement>(
+      'input[aria-label="文件名模板"]',
+    )!;
+  const name = () =>
+    container.querySelector("[data-filename-name]")!.textContent;
+  const description = () =>
+    container.querySelector("[data-filename-description]")!.textContent;
+  assert.equal(pattern().value, "{desc*}_{name}");
+  assert.equal(pattern().closest(".trace-preview"), null);
+  assert.equal(
+    pattern().parentElement!.previousElementSibling,
+    container.querySelector(".trace-preview"),
+  );
+  assert.equal(name(), "朋友");
+  assert.equal(description(), "狼族语_0002s_0038");
+  await tick(t);
+  await act(async () => workers[0].reply());
+  const contour = path(),
+    draws = imageDraws.length;
+  await act(async () => confirm().click());
+  assert.equal(imported[0].name, "朋友");
+  assert.equal(imported[0].description, "狼族语_0002s_0038");
+  await input(container, "文件名模板", "狼族语_{desc*}_{name}");
+  assert.equal(description(), "0002s_0038");
+  assert.equal(backend.settings.filenamePattern, "狼族语_{desc*}_{name}");
+  await input(container, "文件名模板", "{desc}_{name}");
+  assert.equal(name(), "0002s_0038_朋友");
+  assert.equal(description(), "狼族语");
+  await input(container, "文件名模板", "{name*}_{desc}");
+  assert.equal(name(), "狼族语_0002s_0038");
+  assert.equal(description(), "朋友");
+  await input(container, "文件名模板", "{name}_{desc}");
+  assert.equal(name(), "狼族语");
+  assert.equal(description(), "0002s_0038_朋友");
+  await act(async () => confirm().click());
+  assert.equal(imported[1].name, name());
+  assert.equal(imported[1].description, description());
+  assert.equal(glyphPath(imported[1], brush), contour);
+  assert.equal(path(), contour);
+  await tick(t);
+  assert.equal(workers.length, 1);
+  assert.equal(imageDraws.length, draws + 2);
+  await act(async () => root.render(null));
+  await act(async () => root.render(h(ImportDialog, props)));
+  assert.equal(pattern().value, "{name}_{desc}");
+  assert.equal(name(), "狼族语");
+  const reset = Array.from(container.querySelectorAll("button")).find(
+    (button) => button.textContent === "恢复默认",
+  )!;
+  await act(async () => reset.click());
+  assert.equal(pattern().value, "{desc*}_{name}");
+  assert.equal(name(), "朋友");
+  assert.equal(description(), "狼族语_0002s_0038");
+});
+
+test("unmatched, invalid and blank filename templates show exactly the fallback metadata that will be imported", async (t) => {
+  const { container, imported, confirm } = await ready(t);
+  for (const pattern of [
+    "{desc*}_{name}",
+    "{bad}",
+    "{name}{desc}",
+    "{desc**}_{name}",
+    "{name*}-{desc}",
+    "",
+  ]) {
+    await input(container, "文件名模板", pattern);
+    assert.equal(
+      container.querySelector("[data-filename-name]")!.textContent,
+      "甲",
+    );
+    assert.equal(
+      container.querySelector("[data-filename-description]")!.textContent,
+      "—",
+    );
+    assert.equal(
+      container
+        .querySelector('[aria-label="文件名模板"]')!
+        .getAttribute("aria-invalid"),
+      String(Boolean(pattern)),
+    );
+    assert.equal(confirm().disabled, false);
+    await act(async () => confirm().click());
+    assert.equal(imported.at(-1)!.name, "甲");
+    assert.equal(imported.at(-1)!.description, "");
+  }
+  assert.equal(workers.length, 1);
+});
 
 test("square cropping uses one centered region and preserves the complete rectangular source at zero", async (t) => {
   const previous = { ...sourceSize };
@@ -308,6 +405,7 @@ test("restore defaults resets every import setting, refreshes recognition and pe
     crop: 15,
     offsetX: -45,
     offsetY: 60,
+    filenamePattern: "{name}_{desc}",
   });
   await tick(t);
   const previous = workers[0];
@@ -320,6 +418,11 @@ test("restore defaults resets every import setting, refreshes recognition and pe
   assert.equal(busy(), "true");
   assert.equal(confirm().disabled, true);
   assert.deepEqual(backend.settings, defaultImportSettings);
+  assert.equal(
+    container.querySelector<HTMLInputElement>('input[aria-label="文件名模板"]')!
+      .value,
+    "{desc*}_{name}",
+  );
   for (const [label, key] of [
     ["识别阈值", "threshold"],
     ["路径简化", "simplify"],

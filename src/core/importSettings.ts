@@ -1,3 +1,8 @@
+import {
+  defaultFilenamePattern,
+  filenamePatternMaxLength,
+} from "./filenameInfo";
+
 export type TraceOptions = {
   threshold: number;
   simplify: number;
@@ -23,12 +28,14 @@ export type ImportSettings = TraceOptions & {
   crop: number;
   offsetX: number;
   offsetY: number;
+  filenamePattern: string;
 };
 export const defaultImportSettings: ImportSettings = {
   ...defaultTrace,
   crop: 0,
   offsetX: 0,
   offsetY: 0,
+  filenamePattern: defaultFilenamePattern,
 };
 export const importSettingLimits = {
   ...traceOptionLimits,
@@ -48,6 +55,8 @@ export function isImportSettings(value: unknown): value is ImportSettings {
         saved[key] <= max,
     ) &&
     (saved.polarity === "dark" || saved.polarity === "light") &&
+    typeof saved.filenamePattern === "string" &&
+    saved.filenamePattern.length <= filenamePatternMaxLength &&
     Object.keys(saved).length === Object.keys(defaultImportSettings).length
   );
 }
@@ -68,5 +77,10 @@ export function normalizeImportSettings(value: unknown): ImportSettings {
   }
   if (saved.polarity === "dark" || saved.polarity === "light")
     settings.polarity = saved.polarity;
+  if (
+    typeof saved.filenamePattern === "string" &&
+    saved.filenamePattern.length <= filenamePatternMaxLength
+  )
+    settings.filenamePattern = saved.filenamePattern;
   return settings;
 }

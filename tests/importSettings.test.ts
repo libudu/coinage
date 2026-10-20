@@ -14,6 +14,17 @@ import {
 test("import settings validate every numeric limit and reject incomplete or untrusted fields", () => {
   assert.equal(defaultImportSettings.width, 24);
   assert.equal(defaultImportSettings.crop, 0);
+  assert.equal(defaultImportSettings.filenamePattern, "{desc*}_{name}");
+  for (const pattern of [
+    "",
+    "{name}",
+    "狼族语_{desc*}_{name}",
+    "{name*}_{desc}",
+  ])
+    assert.equal(
+      isImportSettings({ ...defaultImportSettings, filenamePattern: pattern }),
+      true,
+    );
   assert.equal(isImportSettings(defaultImportSettings), true);
   for (const [key, { min, max }] of Object.entries(importSettingLimits)) {
     assert.equal(
@@ -38,6 +49,9 @@ test("import settings validate every numeric limit and reject incomplete or untr
     { ...defaultImportSettings, polarity: "invalid" },
     { ...defaultImportSettings, colorOnly: 1 },
     { ...defaultImportSettings, extra: 1 },
+    { ...defaultImportSettings, filenamePattern: null },
+    { ...defaultImportSettings, filenamePattern: 1 },
+    { ...defaultImportSettings, filenamePattern: "x".repeat(257) },
   ])
     assert.equal(isImportSettings(invalid), false);
 });
@@ -50,15 +64,22 @@ test("reading preferences retains supported values, removes unrelated fields and
     colorOnly: true,
     offsetX: -15,
     offsetY: 180,
+    filenamePattern: "{name}_{desc}",
   });
   assert.deepEqual(settings, {
     ...defaultImportSettings,
     width: 65,
     offsetX: -15,
     offsetY: 100,
+    filenamePattern: "{name}_{desc}",
   });
   assert.equal(isImportSettings(settings), true);
   assert.throws(() => normalizeImportSettings(null));
+  assert.equal(
+    normalizeImportSettings({ filenamePattern: "x".repeat(257) })
+      .filenamePattern,
+    defaultImportSettings.filenamePattern,
+  );
 });
 
 test("settings saves are serialized and reopening waits for the latest backend write", async (t) => {

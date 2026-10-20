@@ -1,5 +1,6 @@
 import { SegmentedControl } from "../../shared/components/SegmentedControl";
 import { Button } from "../../shared/components/Button";
+import { Input } from "../../shared/components/Input";
 import { Modal } from "../../shared/components/Modal";
 import { RangeInput } from "../../shared/components/RangeInput";
 import { ArtboardGrid } from "../../shared/components/ArtboardGrid";
@@ -14,6 +15,10 @@ import {
   importSettingLimits,
 } from "../../core/importSettings";
 import type { ImportSettings, TraceOptions } from "../../core/importSettings";
+import {
+  extractFilenameInfo,
+  filenamePatternMaxLength,
+} from "../../core/filenameInfo";
 import type { Glyph, Point } from "../../core/model";
 import type { BrushDefaults } from "../../core/brush";
 import { glyphPath } from "../../core/geometry";
@@ -46,6 +51,9 @@ export function ImportDialog({
   onImport: (g: Glyph) => void;
 }) {
   const titleId = useId();
+  const filenamePatternId = useId();
+  const filenameHelpId = useId();
+  const filenameResultId = useId();
   const [options, setOptions] = useState<ImportSettings>(() => ({
       ...defaultImportSettings,
     })),
@@ -64,6 +72,10 @@ export function ImportDialog({
     [busy, setBusy] = useState(true),
     [error, setError] = useState("");
   const persistedSettings = useRef<ImportSettings | null>(null);
+  const filenameInfo = useMemo(
+    () => extractFilenameInfo(source.name, options.filenamePattern),
+    [source.name, options.filenamePattern],
+  );
   useEffect(() => {
     let alive = true;
     loadImportSettings()
@@ -193,6 +205,8 @@ export function ImportDialog({
       return;
     onImport({
       ...resizedPreview.glyph,
+      name: filenameInfo.name,
+      description: filenameInfo.description,
       reference: alignedReference(raster, resizedPreview.referenceOffset),
     });
   };
@@ -216,53 +230,120 @@ export function ImportDialog({
         </div>
         <div
           className="import-body grid grid-cols-[1fr_220px] gap-[27px] compact:grid-cols-[1fr_170px] compact:gap-[20px]
-          compact:[&_.trace-preview]:self-center phone:grid-cols-[1fr] phone:gap-[20px]"
+          phone:grid-cols-[1fr] phone:gap-[20px]"
         >
-          <div
-            className="trace-preview self-start bg-[#fbfbf8] border [border-style:solid] border-[#dfe5d5] rounded-[8px] overflow-hidden flex
+          <div className="min-w-0 self-start">
+            <div
+              className="trace-preview self-start bg-[#fbfbf8] border [border-style:solid] border-[#dfe5d5] rounded-[8px] overflow-hidden flex
             flex-col justify-between [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[340px]
             [&>svg]:object-contain [&>span]:block [&>span]:text-center [&>span]:py-[11px] [&>span]:px-[15px]
             [&>span]:text-[12px] [&>span]:text-[#859575] [&>span]:border-t [&>span]:[border-top-style:solid]
             [&>span]:border-t-[#e6ebde] [&>span]:whitespace-nowrap [&>span]:text-ellipsis [&>span]:overflow-hidden
             [&>span]:max-w-full phone:max-h-[220px] phone:[&>svg]:h-[190px]"
-          >
-            <svg
-              viewBox="0 0 640 640"
-              width="420"
-              height="420"
-              role="img"
-              aria-label="导入字形预览"
-              aria-busy={busy}
             >
-              <rect width="640" height="640" fill="#fffefa" />
-              <ArtboardGrid />
-              {resizedPreview && reference && (
-                <image
-                  href={reference}
-                  width="640"
-                  height="640"
-                  x={
-                    (resizedPreview.referenceOffset.x * 640) /
-                    Math.max(preview!.raster.width, preview!.raster.height)
-                  }
-                  y={
-                    (resizedPreview.referenceOffset.y * 640) /
-                    Math.max(preview!.raster.width, preview!.raster.height)
-                  }
-                  opacity=".2"
-                  pointerEvents="none"
-                />
-              )}
-              {resizedPreview && (
-                <path
-                  data-trace-artwork=""
-                  d={glyphPath(resizedPreview.glyph, brush)}
-                  fill={resizedPreview.glyph.color}
-                  opacity={busy ? 0.4 : 1}
-                />
-              )}
-            </svg>
-            <span>{source.name}</span>
+              <svg
+                viewBox="0 0 640 640"
+                width="420"
+                height="420"
+                role="img"
+                aria-label="导入字形预览"
+                aria-busy={busy}
+              >
+                <rect width="640" height="640" fill="#fffefa" />
+                <ArtboardGrid />
+                {resizedPreview && reference && (
+                  <image
+                    href={reference}
+                    width="640"
+                    height="640"
+                    x={
+                      (resizedPreview.referenceOffset.x * 640) /
+                      Math.max(preview!.raster.width, preview!.raster.height)
+                    }
+                    y={
+                      (resizedPreview.referenceOffset.y * 640) /
+                      Math.max(preview!.raster.width, preview!.raster.height)
+                    }
+                    opacity=".2"
+                    pointerEvents="none"
+                  />
+                )}
+                {resizedPreview && (
+                  <path
+                    data-trace-artwork=""
+                    d={glyphPath(resizedPreview.glyph, brush)}
+                    fill={resizedPreview.glyph.color}
+                    opacity={busy ? 0.4 : 1}
+                  />
+                )}
+              </svg>
+              <span>{source.name}</span>
+            </div>
+            <div className="mt-[17px] grid grid-cols-[5em_minmax(0,1fr)] gap-x-[10px] gap-y-[7px] text-left text-[12px] leading-[1.7]">
+              <label
+                htmlFor={filenamePatternId}
+                className="self-center whitespace-nowrap text-[#8a987d]"
+              >
+                文件名模板
+              </label>
+              <Input
+                id={filenamePatternId}
+                aria-label="文件名模板"
+                aria-describedby={`${filenameHelpId} ${filenameResultId}`}
+                aria-invalid={Boolean(filenameInfo.error)}
+                value={options.filenamePattern}
+                disabled={!settingsReady}
+                maxLength={filenamePatternMaxLength}
+                spellCheck={false}
+                className="h-[32px]! text-left font-mono text-[12px]!"
+                onChange={(event) =>
+                  setOptions({
+                    ...options,
+                    filenamePattern: event.target.value,
+                  })
+                }
+              />
+              <p
+                id={filenameHelpId}
+                className="col-start-2 m-0 text-[12px] leading-[1.6] text-[#8a987d]"
+              >
+                {"{name} 汉语 · {desc} 描述；占位符内加 * 尽量多取"}
+                <br />
+                其余原样匹配，留空使用文件名
+              </p>
+              <div
+                id={filenameResultId}
+                aria-live="polite"
+                aria-atomic="true"
+                className="col-span-2"
+              >
+                {settingsReady && (
+                  <>
+                    <dl className="m-0 grid grid-cols-[5em_minmax(0,1fr)] gap-x-[10px] gap-y-[4px]">
+                      <dt className="text-[#8a987d]">对应汉语</dt>
+                      <dd
+                        className="m-0 break-words text-[#4b5845]"
+                        data-filename-name=""
+                      >
+                        {filenameInfo.name || "—"}
+                      </dd>
+                      <dt className="text-[#8a987d]">描述</dt>
+                      <dd
+                        className="m-0 break-words text-[#4b5845]"
+                        data-filename-description=""
+                      >
+                        {filenameInfo.description || "—"}
+                      </dd>
+                    </dl>
+                    {filenameInfo.error && (
+                      <p className="mb-0 mt-[6px] text-[11px] text-[#a84d35]">
+                        {filenameInfo.error}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
           </div>
           <fieldset
             disabled={!settingsReady}

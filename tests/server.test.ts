@@ -93,6 +93,7 @@ test("import settings persist independently, survive server restart and reject i
     crop: 10,
     offsetX: -40,
     offsetY: 35,
+    filenamePattern: "{name*}_{desc}",
   };
   const save = (value: unknown, headers = {}) =>
     fetch(settingsUrl, {
@@ -115,6 +116,8 @@ test("import settings persist independently, survive server restart and reject i
     { ...settings, offsetY: -101 },
     { ...settings, width: "40" },
     { ...settings, extra: true },
+    { ...settings, filenamePattern: 7 },
+    { ...settings, filenamePattern: "x".repeat(257) },
     {},
   ])
     assert.equal((await save(invalid)).status, 400);
