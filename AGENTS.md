@@ -27,10 +27,12 @@ src/
 │   │   ├── useCanvasInteraction.ts # 节点、分支、控制柄、钢笔与拖拽历史
 │   │   ├── GlyphArtwork.tsx   # SVG 字形、节点与控制柄渲染
 │   │   ├── GlyphSidebar.tsx   # 字符集与笔画列表
+│   │   ├── AddGlyphMenu.tsx   # 新建空白字符与图片导入菜单
 │   │   ├── useEditorCommands.ts # 删除、复制、撤销重做与编辑快捷键
 │   │   ├── nodeSelection.ts    # 节点集合、锁定保护、整体位移与批量删除
 │   │   ├── Properties.tsx      # 节点、笔画、笔锋和外观属性
 │   │   ├── EditorContextMenu.tsx # 字符、笔画与节点操作右键菜单
+│   │   ├── RenameGlyphDialog.tsx # 字符重命名弹窗
 │   │   ├── BrushControls.tsx   # 全局起收笔与快捷预设
 │   │   ├── BrushTuning.tsx     # 折叠式笔锋长度、张开调节与拖动历史
 │   │   └── GlyphPreview.tsx    # 字形缩略预览

@@ -18,12 +18,13 @@ export function EditorCanvas({
   selectNodes,
   tool,
   setTool,
-  upload,
   importFile,
   toast,
   showReference,
   modalOpen,
-  toggleInspector,
+  undo,
+  redo,
+  showShortcuts,
   openContextMenu,
 }: EditorCanvasProps) {
   const [grid, setGrid] = useState(true),
@@ -160,33 +161,39 @@ export function EditorCanvas({
       <div className="editor-topbar h-[51px] bg-[#f9faf5] border-b [border-bottom-style:solid] border-b-[var(--border)] flex
         items-center justify-between gap-[10px] py-0 px-[24px] shrink-0 laptop:py-0 laptop:px-[17px] tablet:py-0
         tablet:px-[12px] phone:py-0 phone:px-[10px]">
-        <div className="breadcrumb flex items-center gap-[12px] min-w-0 text-[#8c9486] text-[11px] [&_input]:w-[125px]
-          [&_input]:max-w-full [&_input]:bg-[transparent] [&_input]:[border:0] [&_input]:text-[11px]
-          [&_input]:text-[#4b5845] tablet:gap-[5px] tablet:[&_input]:w-[80px] tablet:[&>span]:hidden
-          tablet:[&>svg]:hidden phone:[&_input]:w-[65px] [&>svg]:[transform:rotate(-90deg)]">
-          <span>字符集</span>
-          <Icon name="chevron" size={12} />
-          <input
-            aria-label="字符名称"
-            value={glyph.name}
-            onChange={(e) =>
-              doc.update((g) => {
-                g.name = e.target.value;
-              }, false)
-            }
+        <div className="history-actions flex items-center min-w-0 gap-[3px] [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
+          tablet:[&_.icon-button]:w-[25px] compact:gap-[1px]">
+          <IconButton
+            icon="undo"
+            title="撤销 Ctrl+Z"
+            onClick={undo}
+            disabled={!doc.canUndo}
           />
+          <IconButton
+            icon="redo"
+            title="重做 Ctrl+Shift+Z"
+            onClick={redo}
+            disabled={!doc.canRedo}
+          />
+          <div
+            className={`save-state ${doc.saved === "error" ? "error" : ""} flex items-center min-w-0 gap-[7px] ml-[10px]
+              text-[#8b9386] text-[11px] whitespace-nowrap compact:hidden [&.error]:text-[#a04c32]
+              [&.error_.save-dot]:bg-[#b76548]`}
+            role="status"
+          >
+            <span className="save-dot inline-block w-[5px] h-[5px] rounded-[50%] bg-[#8eab70] shrink-0" />
+            <span className="truncate">
+              {doc.saved === "saved"
+                ? "已保存到本机"
+                : doc.saved === "saving"
+                  ? "保存中"
+                  : "存储空间不足，请导出手稿"}
+            </span>
+          </div>
         </div>
         <div className="view-actions flex gap-[5px] items-center [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
           [&_.icon-button>svg]:w-[15px] [&_.icon-button>svg]:h-[15px] tablet:gap-[1px]
           phone:[&_.mini-divider]:hidden phone:[&_.icon-button]:w-[25px]">
-          <button
-            className="view-button inspector-toggle gap-[6px] items-center text-[11px] text-[#7a8671] py-[6px] px-[9px]
-              rounded-[4px] flex phone:p-[5px] phone:text-[10px] [&.active]:bg-[#e7eddf] [&.active]:text-[#385e3d]"
-            onClick={toggleInspector}
-          >
-            <Icon name="settings" size={16} />
-            属性
-          </button>
           <button
             className={`view-button ${preview ? "active" : ""} gap-[6px] items-center text-[11px] text-[#7a8671] py-[6px] px-[9px]
               rounded-[4px] flex phone:p-[5px] phone:text-[10px] [&.active]:bg-[#e7eddf] [&.active]:text-[#385e3d]`}
@@ -210,6 +217,11 @@ export function EditorCanvas({
               setNodesVisible((v) => !v);
               setPreview(false);
             }}
+          />
+          <IconButton
+            icon="shortcut"
+            title="快捷键"
+            onClick={showShortcuts}
           />
         </div>
       </div>
@@ -326,8 +338,6 @@ export function EditorCanvas({
               onClick={() => setTool(t.id)}
             />
           ))}
-          <span className="tool-divider h-[1px] bg-[#e7ebdf] w-[23px] my-[3px] mx-auto" />
-          <IconButton icon="image" title="导入图片" onClick={upload} />
         </div>
         <div
           className="artboard-wrap absolute top-[50%] left-[calc(50%_+_11px)] shadow-[0_3px_16px_#48513706]"

@@ -1,5 +1,6 @@
 import { RangeInput } from "../../shared/components/RangeInput";
 import { useRef } from "react";
+import type { ReactNode } from "react";
 import { clamp, distance } from "../../core/geometry";
 import type { Glyph, Knot, Project, Stroke } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
@@ -15,7 +16,7 @@ type Props = {
   strokeId: string | null;
   showReference: boolean;
   setShowReference: (v: boolean) => void;
-  closeInspector: () => void;
+  exportActions: ReactNode;
 };
 export function Properties({
   doc,
@@ -25,7 +26,7 @@ export function Properties({
   strokeId,
   showReference,
   setShowReference,
-  closeInspector,
+  exportActions,
 }: Props) {
   const node = nodeId ? glyph.nodes[nodeId] : undefined,
     nodes = nodeIds.map((id) => glyph.nodes[id]).filter(Boolean),
@@ -92,19 +93,7 @@ export function Properties({
   };
   return (
     <aside className="right-panel bg-[var(--panel)] min-h-0 flex flex-col border-l [border-left-style:solid]
-      border-l-[var(--border)] compact:hidden compact:[.inspector-open_&]:flex
-      compact:[.inspector-open_&]:absolute compact:[.inspector-open_&]:top-0 compact:[.inspector-open_&]:right-0
-      compact:[.inspector-open_&]:bottom-0 compact:[.inspector-open_&]:w-[238px]
-      compact:[.inspector-open_&]:z-[25] compact:[.inspector-open_&]:shadow-[-12px_0_35px_#203d221a]">
-      <div className="property-heading h-[51px] shrink-0 flex items-center justify-between py-0 px-[21px] border-b
-        [border-bottom-style:solid] border-b-[var(--border)] text-[12px] font-semibold [&>svg]:text-[#929c86]
-        tablet:py-0 tablet:px-[15px] compact:[&>svg]:hidden">
-        <span>属性</span>
-        <Icon name="settings" size={16} />
-        <span className="inspector-close hidden compact:block">
-          <IconButton icon="close" title="关闭属性" onClick={closeInspector} />
-        </span>
-      </div>
+      border-l-[var(--border)] compact:hidden">
       <div className="properties-scroll flex-1 overflow-auto min-h-0">
         <Section
           title={node ? "节点" : stroke ? "笔画" : "字符"}
@@ -350,14 +339,12 @@ export function Properties({
           </Section>
         )}
       </div>
-      <div className="property-footer h-[43px] border-t [border-top-style:solid] border-t-[var(--border)] flex items-center
-        gap-[7px] py-0 px-[21px] text-[#92a082] text-[10px] shrink-0 [&>svg:last-child]:ml-auto
-        [&>svg:last-child]:text-[#a1b18d] [&_.local-dot]:mr-[1px] [&_.local-dot]:w-[4px] [&_.local-dot]:h-[4px]">
-        <span className="local-dot inline-block w-[5px] h-[5px] rounded-[50%] bg-[#8eab70] shrink-0" />
-        <Icon name="save" size={14} />
-        <span>本地手稿</span>
-        <Icon name="check" size={14} />
-      </div>
+      {!nodes.length && !stroke && (
+        <div className="shrink-0 border-t [border-top-style:solid] border-t-[var(--border)] px-[20px] py-[16px]
+          wide:px-[25px] laptop:px-[16px] tablet:px-[14px]">
+          {exportActions}
+        </div>
+      )}
     </aside>
   );
 }

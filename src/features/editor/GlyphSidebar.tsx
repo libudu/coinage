@@ -1,9 +1,9 @@
 import { centerPath } from "../../core/geometry";
 import type { Glyph, Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
-import { IconButton } from "../../shared/components/controls";
 import type { useProject } from "../project/useProject";
 import { GlyphPreview } from "./GlyphPreview";
+import { AddGlyphMenu } from "./AddGlyphMenu";
 
 type Props = {
   doc: ReturnType<typeof useProject>;
@@ -13,8 +13,7 @@ type Props = {
   switchGlyph: (id: string) => void;
   openGlyphContextMenu: (id: string, position: Point) => void;
   addGlyph: () => void;
-  startDrawing: () => void;
-  showShortcuts: () => void;
+  importGlyph: () => void;
 };
 
 export function GlyphSidebar({
@@ -25,22 +24,19 @@ export function GlyphSidebar({
   switchGlyph,
   openGlyphContextMenu,
   addGlyph,
-  startDrawing,
-  showShortcuts,
+  importGlyph,
 }: Props) {
   const { project, update } = doc;
   return (
     <aside className="left-panel bg-[var(--panel)] min-h-0 flex flex-col border-r [border-right-style:solid] border-r-[var(--border)]">
-      <div className="panel-tabs h-[62px] flex items-center justify-between py-0 px-[19px] shrink-0 [&>span]:text-[12px]
-        [&>span]:font-semibold [&>span]:flex [&>span]:gap-[12px] [&>span]:items-center [&_b]:text-[#929a8b]
-        [&_b]:text-[10px] [&_b]:font-medium [&_b]:[font-family:ui-monospace,_monospace] [&_.icon-button]:w-[26px]
-        wide:h-[68px] wide:py-0 wide:px-[25px] tablet:py-0 tablet:px-[14px] compact:py-0 compact:px-[8px]
-        compact:h-[52px] compact:[&>span]:text-[11px] compact:[&_b]:hidden compact:[&_.icon-button]:w-[20px]
-        phone:py-0 phone:px-[5px]">
-        <span>
-          字符集 <b>{project.glyphs.length.toString().padStart(2, "0")}</b>
+      <div className="panel-tabs h-[62px] flex items-center justify-between py-0 px-[19px] shrink-0 text-[12px]
+        font-semibold
+        wide:h-[68px] wide:py-0 wide:px-[25px] tablet:py-0 tablet:px-[14px] compact:py-0
+        compact:h-[52px] compact:text-[11px] compact:px-[5px] phone:py-0 phone:px-[3px] phone:text-[10px]">
+        <span className="whitespace-nowrap">
+          字符集{" "}<span className="text-[#a0a69b] font-normal">({project.glyphs.length})</span>
         </span>
-        <IconButton icon="plus" title="新建字符" onClick={addGlyph} />
+        <AddGlyphMenu addGlyph={addGlyph} importGlyph={importGlyph} />
       </div>
       <div className="glyph-list pt-0 px-[12px] pb-[19px] flex flex-col gap-[8px] max-h-[46%] overflow-auto shrink-0 wide:pt-0
         wide:px-[17px] wide:pb-[24px] tablet:pt-0 tablet:px-[8px] tablet:pb-[15px] compact:pt-0 compact:px-[7px]
@@ -77,22 +73,17 @@ export function GlyphSidebar({
             {g.id === glyph.id && <span className="glyph-active-dot w-[5px] h-[5px] bg-[#7d9c58] rounded-[50%] ml-auto mr-[3px] tablet:hidden" />}
           </button>
         ))}
-        <button className="add-glyph border [border-style:dashed] border-[#d9dfd0] min-h-[36px] rounded-[5px] text-[11px] flex
-          justify-center items-center gap-[7px] text-[#929c86] mt-[3px] compact:text-[0px] hover:bg-[#f0f4e7] hover:border-[#a6b896]" onClick={addGlyph}>
-          <Icon name="plus" size={16} />
-          新建字符
-        </button>
       </div>
       <div className="layers-section border-t [border-top-style:solid] border-t-[var(--border)] pt-[22px] px-[12px] pb-[12px]
         min-h-0 flex-1 flex flex-col [&>.section-heading]:py-0 [&>.section-heading]:px-[8px]
         [&>.section-heading]:mb-[13px] laptop:pl-[9px] laptop:pr-[9px] compact:pt-[16px] compact:px-[6px]
         compact:pb-[8px] compact:[&>.section-heading]:py-0 compact:[&>.section-heading]:px-[4px]">
-        <div className="section-heading flex items-center justify-between mb-[19px] gap-[8px] [&_h3]:text-[12px]
-          [&_h3]:font-semibold [&_h3]:m-0 [&_h3]:tracking-[0.5px]">
-          <h3>笔画</h3>
-          <span className="count-badge [font-family:ui-monospace,_monospace] text-[10px] text-[#8e9785]">{glyph.strokes.length}</span>
+        <div className="section-heading mb-[19px]">
+          <h3 className="m-0 whitespace-nowrap text-[12px] font-semibold compact:text-[11px] phone:text-[10px]">
+            笔画{" "}<span className="text-[#a0a69b] font-normal">({glyph.strokes.length})</span>
+          </h3>
         </div>
-        <div className="layer-list overflow-auto min-h-0">
+        <div className="layer-list flex-1 overflow-auto min-h-0">
           {glyph.strokes.map((s, i) => (
             <div
               key={s.id}
@@ -149,24 +140,11 @@ export function GlyphSidebar({
             </div>
           ))}
           {!glyph.strokes.length && (
-            <button className="empty-layer flex items-center gap-[10px] justify-center w-full h-[60px] text-[12px] text-[#8c9782]" onClick={startDrawing}>
-              <Icon name="pen" />
-              绘制第一笔
-            </button>
+            <div className="empty-layer flex items-center justify-center h-full text-[12px] text-[#afb4aa] compact:text-[10px]">
+              暂无笔画
+            </div>
           )}
         </div>
-      </div>
-      <div className="left-footer border-t [border-top-style:solid] border-t-[var(--border)] min-h-[43px] py-0 px-[20px] flex
-        items-center justify-between shrink-0 [&>button]:flex [&>button]:items-center [&>button]:gap-[8px]
-        [&>button]:text-[10px] [&>button]:text-[#8d9684] [&>button>span]:border
-        [&>button>span]:[border-style:solid] [&>button>span]:border-[#dce2d2] [&>button>span]:w-[15px]
-        [&>button>span]:h-[16px] [&>button>span]:rounded-[3px] [&>button>span]:text-center
-        [&>button>span]:ml-[4px] [&>button>span]:[font-family:monospace] tablet:py-0 tablet:px-[13px] compact:py-0
-        compact:px-[8px] compact:[&>button]:text-[9px] compact:[&>button]:gap-[5px] compact:[&>button>span]:hidden">
-        <button onClick={showShortcuts}>
-          <Icon name="shortcut" size={17} />
-          快捷键<span>?</span>
-        </button>
       </div>
     </aside>
   );

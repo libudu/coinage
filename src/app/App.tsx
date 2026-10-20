@@ -1,5 +1,4 @@
 import "./App.css";
-import referenceUrl from "../../public/reference.png?inline";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { emptyGlyph } from "../core/model";
 import type { Point } from "../core/model";
@@ -14,10 +13,11 @@ import { useProject } from "../features/project/useProject";
 import { useProjectFiles } from "../features/project/useProjectFiles";
 import { useEditorCommands } from "../features/editor/useEditorCommands";
 import { GlyphSidebar } from "../features/editor/GlyphSidebar";
+import { RenameGlyphDialog } from "../features/editor/RenameGlyphDialog";
 
 export default function App() {
   const [contextMenu, setContextMenu] = useState<Point | null>(null);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [renamingGlyph, setRenamingGlyph] = useState<{ id: string; name: string } | null>(null);
   const doc = useProject(),
     { project, update } = doc,
     glyph =
@@ -110,7 +110,7 @@ export default function App() {
     setShowReference(false);
   };
   return (
-    <div className={`studio ${inspectorOpen ? "inspector-open" : ""} h-[100dvh] min-h-[580px] flex flex-col overflow-hidden`}>
+    <div className="studio h-[100dvh] min-h-[580px] flex flex-col overflow-hidden">
       <input
         ref={fileInput}
         type="file"
@@ -198,86 +198,6 @@ export default function App() {
                   <Icon name="save" />
                   保存手稿文件
                 </button>
-                <button
-                  onClick={() => {
-                    setSource({ src: referenceUrl, name: "示例字形.png" });
-                    setMenu(null);
-                  }}
-                >
-                  <Icon name="image" />
-                  导入示例图片
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        <div className={`save-state ${doc.saved === "error" ? "error" : ""} flex items-center gap-[7px] text-[#8b9386] text-[11px]
-          whitespace-nowrap laptop:hidden [&.error]:text-[#a04c32] [&.error_.save-dot]:bg-[#b76548]`}>
-          <span className="save-dot inline-block w-[5px] h-[5px] rounded-[50%] bg-[#8eab70] shrink-0" />
-          {doc.saved === "saved"
-            ? "已保存到本机"
-            : doc.saved === "saving"
-              ? "保存中"
-              : "存储空间不足，请导出手稿"}
-        </div>
-        <div className="header-actions ml-auto flex items-center gap-[14px] laptop:gap-[9px] laptop:[&_.history-actions]:mr-0
-          tablet:gap-[7px] tablet:[&_.button]:py-0 tablet:[&_.button]:px-[9px] tablet:[&_.button]:text-[11px]
-          compact:gap-[7px] compact:[&_.button]:h-[34px] phone:gap-[5px]">
-          <div className="history-actions flex gap-[3px] mr-[8px] tablet:[&_.icon-button]:w-[25px] compact:gap-[1px]">
-            <IconButton
-              icon="undo"
-              title="撤销 Ctrl+Z"
-              onClick={undo}
-              disabled={!doc.canUndo}
-            />
-            <IconButton
-              icon="redo"
-              title="重做 Ctrl+Shift+Z"
-              onClick={redo}
-              disabled={!doc.canRedo}
-            />
-          </div>
-          <button className={`button import-button h-[37px] py-0 px-[14px] inline-flex items-center justify-center gap-[8px] border
-            [border-style:solid] border-[#dfe4d7] rounded-[6px] bg-[#fcfdf9] text-[12px] font-[550] whitespace-nowrap
-            compact:text-[0px]! compact:p-0! compact:w-[34px] compact:gap-0 ${buttonStateClasses}`} onClick={upload}>
-            <Icon name="upload" />
-            导入图片
-          </button>
-          <div
-            className="split-button dropdown-wrap flex relative [&>.button]:rounded-[6px_0_0_6px] [&>.button]:border-r
-              [&>.button]:[border-right-style:solid] [&>.button]:border-r-[#52705b]"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <button className={`button primary pl-[15px] pr-[14px] h-[37px] py-0 inline-flex items-center justify-center gap-[8px] border
-              [border-style:solid] border-[#dfe4d7] rounded-[6px] bg-[#fcfdf9] text-[12px] font-[550] whitespace-nowrap ${buttonStateClasses}`} onClick={saveSvg}>
-              <Icon name="download" />
-              导出 SVG
-            </button>
-            <button
-              className="split-arrow h-[37px] w-[29px] grid place-items-center bg-[#2d4e3b] text-[#e5eedc] rounded-[0_6px_6px_0]
-                compact:h-[34px] compact:w-[23px] enabled:hover:bg-[#3d6248] enabled:hover:text-white!"
-              aria-label="更多导出格式"
-              onClick={() => setMenu(menu === "export" ? null : "export")}
-            >
-              <Icon name="chevron" size={16} />
-            </button>
-            {menu === "export" && (
-              <div className="dropdown export-dropdown absolute top-[calc(100%_+_9px)] right-0 bg-[#fcfdf9] border [border-style:solid]
-                border-[#dfe3d7] shadow-[0_10px_35px_#22321a14] rounded-[9px] w-[204px] p-[6px] z-[50] [&_button]:flex
-                [&_button]:items-center [&_button]:gap-[10px] [&_button]:w-full [&_button]:text-[12px]
-                [&_button]:py-[11px] [&_button]:px-[10px] [&_button]:text-left [&_button]:rounded-[5px] [&_button:hover]:bg-[#edf2e6]">
-                <button onClick={saveSvg}>
-                  <Icon name="node" />
-                  SVG 矢量图
-                </button>
-                <button onClick={savePng}>
-                  <Icon name="image" />
-                  PNG 透明图片
-                </button>
-                <button onClick={exportProject}>
-                  <Icon name="file" />
-                  JSON 可编辑手稿
-                </button>
               </div>
             )}
           </div>
@@ -298,12 +218,13 @@ export default function App() {
             openContextMenu(position, null, null);
           }}
           addGlyph={addGlyph}
-          startDrawing={() => setTool("pen")}
-          showShortcuts={() => setShortcuts(true)}
+          importGlyph={upload}
         />
         <EditorCanvas
           openContextMenu={openContextMenu}
-          toggleInspector={() => setInspectorOpen((v) => !v)}
+          undo={undo}
+          redo={redo}
+          showShortcuts={() => setShortcuts(true)}
           doc={doc}
           glyph={glyph}
           nodeId={nodeId}
@@ -313,14 +234,12 @@ export default function App() {
           selectNodes={selectNodes}
           tool={tool}
           setTool={setTool}
-          upload={upload}
           importFile={importFile}
           toast={setToast}
           showReference={showReference}
-          modalOpen={!!source || shortcuts || !!contextMenu}
+          modalOpen={!!source || shortcuts || !!contextMenu || !!renamingGlyph}
         />
         <Properties
-          closeInspector={() => setInspectorOpen(false)}
           doc={doc}
           glyph={glyph}
           nodeId={nodeId}
@@ -328,6 +247,47 @@ export default function App() {
           strokeId={strokeId}
           showReference={showReference}
           setShowReference={setShowReference}
+          exportActions={
+            <div
+              className="split-button dropdown-wrap flex relative [&>.button]:rounded-[6px_0_0_6px] [&>.button]:border-r
+                [&>.button]:[border-right-style:solid] [&>.button]:border-r-[#52705b]"
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <button className={`button primary flex-1 min-w-0 px-[14px] h-[37px] inline-flex items-center justify-center gap-[8px] border
+                [border-style:solid] border-[#dfe4d7] rounded-[6px] text-[12px] font-[550] whitespace-nowrap ${buttonStateClasses}`} onClick={saveSvg}>
+                <Icon name="download" />
+                导出 SVG
+              </button>
+              <button
+                className="split-arrow h-[37px] w-[29px] shrink-0 grid place-items-center bg-[#2d4e3b] text-[#e5eedc]
+                  rounded-[0_6px_6px_0] enabled:hover:bg-[#3d6248] enabled:hover:text-white!"
+                aria-label="更多导出格式"
+                aria-expanded={menu === "export"}
+                onClick={() => setMenu(menu === "export" ? null : "export")}
+              >
+                <Icon name="chevron" size={16} />
+              </button>
+              {menu === "export" && (
+                <div className="dropdown export-dropdown absolute bottom-[calc(100%_+_9px)] right-0 bg-[#fcfdf9] border [border-style:solid]
+                  border-[#dfe3d7] shadow-[0_10px_35px_#22321a14] rounded-[9px] w-[204px] p-[6px] z-[50] [&_button]:flex
+                  [&_button]:items-center [&_button]:gap-[10px] [&_button]:w-full [&_button]:text-[12px]
+                  [&_button]:py-[11px] [&_button]:px-[10px] [&_button]:text-left [&_button]:rounded-[5px] [&_button:hover]:bg-[#edf2e6]">
+                  <button onClick={saveSvg}>
+                    <Icon name="node" />
+                    SVG 矢量图
+                  </button>
+                  <button onClick={savePng}>
+                    <Icon name="image" />
+                    PNG 透明图片
+                  </button>
+                  <button onClick={exportProject}>
+                    <Icon name="file" />
+                    JSON 可编辑手稿
+                  </button>
+                </div>
+              )}
+            </div>
+          }
         />
         {contextMenu && (
           <EditorContextMenu
@@ -342,10 +302,26 @@ export default function App() {
             select={select}
             remove={remove}
             duplicate={duplicate}
+            renameGlyph={() => setRenamingGlyph({ id: glyph.id, name: glyph.name })}
             toast={setToast}
           />
         )}
       </div>
+      {renamingGlyph && (
+        <RenameGlyphDialog
+          name={renamingGlyph.name}
+          onClose={() => setRenamingGlyph(null)}
+          onConfirm={(name) => {
+            if (name !== renamingGlyph.name) {
+              update((_, p) => {
+                const target = p.glyphs.find((g) => g.id === renamingGlyph.id);
+                if (target) target.name = name;
+              });
+            }
+            setRenamingGlyph(null);
+          }}
+        />
+      )}
       {source && (
         <ImportDialog
           brush={project.brush}

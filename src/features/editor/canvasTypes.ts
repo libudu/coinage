@@ -12,12 +12,13 @@ export type EditorCanvasProps = {
   selectNodes: (nodes: string[], stroke?: string | null) => void;
   tool: Tool;
   setTool: (t: Tool) => void;
-  upload: () => void;
   importFile: (f: File) => void;
   toast: (s: string) => void;
   showReference: boolean;
   modalOpen: boolean;
-  toggleInspector: () => void;
+  undo: () => void;
+  redo: () => void;
+  showShortcuts: () => void;
   openContextMenu: (
     position: Point,
     node: string | null,
