@@ -237,6 +237,7 @@ export function EditorCanvas({
                 : glyph.strokes.find((s) => s.visible && s.nodes.includes(targetNode)))
                 ?.id ?? null
             : target.closest("[data-stroke-id]")?.getAttribute("data-stroke-id") ?? null;
+          if (!targetNode && !targetStroke) return;
           openContextMenu({ x: e.clientX, y: e.clientY }, targetNode, targetStroke);
         }}
         onDragOver={(e) => {

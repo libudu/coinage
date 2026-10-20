@@ -189,7 +189,7 @@ export function EditorContextMenu({
         [&>button]:px-[9px] [&>button]:rounded-[4px] [&>button]:text-left [&>button]:text-[12px]
         [&>button]:text-[#53674b] [&>button:hover:not(:disabled)]:bg-[#edf3e4] [&>button:hover:not(:disabled)]:outline-offset-[-2px] [&>button:focus-visible]:bg-[#edf3e4] [&>button:focus-visible]:outline-offset-[-2px] [&>button.danger]:text-[#a44c3a]!"
       role="menu"
-      aria-label={node ? "节点操作" : stroke ? "笔画操作" : "全局操作"}
+      aria-label={node ? "节点操作" : stroke ? "笔画操作" : "字符操作"}
       tabIndex={-1}
       style={{ left: offset.x, top: offset.y }}
       onContextMenu={(e) => e.preventDefault()}

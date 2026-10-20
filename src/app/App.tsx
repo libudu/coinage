@@ -284,6 +284,10 @@ export default function App() {
           strokeId={strokeId}
           select={select}
           switchGlyph={switchGlyph}
+          openGlyphContextMenu={(id, position) => {
+            switchGlyph(id);
+            openContextMenu(position, null, null);
+          }}
           addGlyph={addGlyph}
           startDrawing={() => setTool("pen")}
           showShortcuts={() => setShortcuts(true)}
@@ -378,7 +382,7 @@ export default function App() {
                 ["从节点拉出新笔画", "Alt + 拖动"],
                 ["约束 45° 方向", "Shift + 拖动"],
                 ["添加路径节点", "双击笔画"],
-                ["全局 / 节点 / 笔画操作", "右键"],
+                ["字符列表 / 节点 / 笔画操作", "右键"],
                 ["移动节点", "方向键"],
                 ["大步移动节点", "Shift + 方向键"],
                 ["临时平移画布", "空格 + 拖动"],

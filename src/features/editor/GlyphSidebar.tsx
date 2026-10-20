@@ -1,5 +1,5 @@
 import { centerPath } from "../../core/geometry";
-import type { Glyph } from "../../core/model";
+import type { Glyph, Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
 import { IconButton } from "../../shared/components/controls";
 import type { useProject } from "../project/useProject";
@@ -11,6 +11,7 @@ type Props = {
   strokeId: string | null;
   select: (node: string | null, stroke?: string | null) => void;
   switchGlyph: (id: string) => void;
+  openGlyphContextMenu: (id: string, position: Point) => void;
   addGlyph: () => void;
   startDrawing: () => void;
   showShortcuts: () => void;
@@ -22,6 +23,7 @@ export function GlyphSidebar({
   strokeId,
   select,
   switchGlyph,
+  openGlyphContextMenu,
   addGlyph,
   startDrawing,
   showShortcuts,
@@ -51,6 +53,10 @@ export function GlyphSidebar({
               laptop:gap-[9px] laptop:p-[7px] tablet:min-h-[70px] tablet:gap-[7px] compact:min-h-[87px] compact:py-[8px]
               compact:px-[3px] compact:flex-col compact:gap-[6px] hover:bg-[#f1f4eb] [&.selected]:bg-[#edf2e3] [&.selected]:border-[#cddbb9] [&.selected:hover]:bg-[#edf2e3]`}
             onClick={() => switchGlyph(g.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              openGlyphContextMenu(g.id, { x: e.clientX, y: e.clientY });
+            }}
           >
             <div className="glyph-thumb w-[60px] h-[62px] bg-[#fffefa] grid place-items-center border [border-style:solid]
               border-[#e4e8dc] rounded-[4px] shrink-0 [&_svg]:w-[54px] [&_svg]:h-[54px] wide:w-[69px] wide:h-[69px]
