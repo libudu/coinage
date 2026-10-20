@@ -1,4 +1,4 @@
-import type { BrushDefaults, BrushSettings, BrushTip } from "./brush";
+import type { BrushDefaults } from "./brush";
 
 export type Point = { x: number; y: number };
 export type NodeMode = "corner" | "smooth" | "symmetric";
@@ -17,11 +17,6 @@ export type Stroke = {
   visible: boolean;
   locked: boolean;
   cap: "butt" | "round" | "square";
-  // 旧版 v1 手稿的导入字段；渲染时忽略，迁移时清除。
-  startTip?: BrushTip | "basic";
-  endTip?: BrushTip | "basic";
-  startBrush?: BrushSettings;
-  endBrush?: BrushSettings;
   join: "miter" | "round" | "bevel";
 };
 export type Glyph = {
@@ -35,7 +30,6 @@ export type Glyph = {
 };
 export type Project = {
   version: 1;
-  name: string;
   glyphs: Glyph[];
   activeId: string;
   brush?: BrushDefaults;

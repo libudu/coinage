@@ -18,12 +18,19 @@ export function ProjectProvider({ initialProject, children }: { initialProject: 
       event.preventDefault();
       event.returnValue = "";
     };
+    const saveShortcut = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      void autosave.flush();
+    };
     document.addEventListener("visibilitychange", flush);
     window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("keydown", saveShortcut);
     return () => {
       autosave.dispose();
       document.removeEventListener("visibilitychange", flush);
       window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("keydown", saveShortcut);
     };
   }, [store]);
   return <ProjectContext.Provider value={store}>{children}</ProjectContext.Provider>;

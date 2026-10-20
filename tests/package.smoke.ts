@@ -55,11 +55,11 @@ test("release ZIP extracts to a standalone portable app that persists data and h
   const first = launch();
   await ready();
   assert.match(await (await fetch(url)).text(), /Coinage/);
-  const project = demoProject(); project.name = "便携保存验证";
+  const project = demoProject(); project.glyphs[0].name = "便携保存验证";
   assert.equal((await fetch(`${url}/api/project`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project, revision: null }),
   })).status, 200);
-  assert.equal(JSON.parse(await readFile(join(root, "data/project.json"), "utf8")).name, project.name);
+  assert.equal(JSON.parse(await readFile(join(root, "data/project.json"), "utf8")).glyphs[0].name, project.glyphs[0].name);
   const duplicate = launch();
   assert.deepEqual(await once(duplicate.child, "exit"), [0, null]);
   assert.match(duplicate.output(), /已在运行/);

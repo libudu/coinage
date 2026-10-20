@@ -2,7 +2,7 @@ import { freeze, produce } from "immer";
 import { createStore } from "zustand/vanilla";
 import { emptyGlyph, uid } from "../../core/model";
 import type { Glyph, Point, Project } from "../../core/model";
-import { changeGlobalBrush, migrateProjectBrush } from "../../core/brush";
+import { changeGlobalBrush } from "../../core/brush";
 import type { BrushDefaults } from "../../core/brush";
 import type { Tool } from "../editor/canvasTypes";
 import { removeNodes, selectionLocked, translateNodes } from "../editor/nodeSelection";
@@ -69,7 +69,7 @@ function cleanSession(project: Project, session: EditorSession): EditorSession {
   if (strokeId === session.strokeId && nodeIds.length === session.nodeIds.length) return session;
   return { ...session, nodeIds, strokeId };
 }
-// 保存当前字符以兼容 v1 格式，但编辑历史不回退字符切换状态。
+// 撤销编辑时保留当前仍存在的字符，不回退字符切换状态。
 function restore(snapshot: Project, current: Project): Project {
   const activeId = snapshot.glyphs.some((g) => g.id === current.activeId)
     ? current.activeId : snapshot.activeId;
@@ -77,7 +77,7 @@ function restore(snapshot: Project, current: Project): Project {
 }
 
 export function createProjectStore(initialProject: Project) {
-  const initial = freeze(migrateProjectBrush(structuredClone(initialProject)), true);
+  const initial = freeze(structuredClone(initialProject), true);
   const glyph = activeGlyph({ project: initial });
   return createStore<ProjectState>()((set, get) => {
     const actions: ProjectState["actions"] = {
@@ -101,7 +101,7 @@ export function createProjectStore(initialProject: Project) {
       },
       replace(project) {
         actions.commitTransaction();
-        const next = freeze(migrateProjectBrush(structuredClone(project)), true);
+        const next = freeze(structuredClone(project), true);
         const state = get();
         set({ project: next, committedProject: next, past: appendHistory(state.past, state.project),
           future: [], transaction: null, saved: "saving",

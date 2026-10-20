@@ -11,10 +11,9 @@ type Options = {
   shortcuts: boolean;
   setShortcuts: (open: boolean) => void;
   closeMenu: () => void;
-  exportProject: () => void;
 };
 
-export function useEditorCommands({ toast, importing, shortcuts, setShortcuts, closeMenu, exportProject }: Options) {
+export function useEditorCommands({ toast, importing, shortcuts, setShortcuts, closeMenu }: Options) {
   const api = useProjectApi();
   const actions = useProjectActions();
   const nudge = useRef<{ id: TransactionId; key: string } | null>(null);
@@ -40,11 +39,10 @@ export function useEditorCommands({ toast, importing, shortcuts, setShortcuts, c
       const state = api.getState(), glyph = activeGlyph(state), { nodeIds, strokeId } = state.session;
       if (e.ctrlKey || e.metaKey) {
         const key = e.key.toLowerCase();
-        if (["a", "z", "y", "s", "d"].includes(key)) e.preventDefault();
+        if (["a", "z", "y", "d"].includes(key)) e.preventDefault();
         if (key === "a") actions.selectNodes(selectableNodeIds(glyph), null);
         if (key === "z") e.shiftKey ? actions.redo() : actions.undo();
         if (key === "y") actions.redo();
-        if (key === "s") exportProject();
         if (key === "d") duplicate();
         return;
       }

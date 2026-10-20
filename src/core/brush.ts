@@ -14,18 +14,6 @@ export const defaultBrush: BrushDefaults = {
   startBrush: { ...defaultBrushSettings }, endBrush: { ...defaultBrushSettings },
 };
 
-// 兼容旧版 v1 手稿，在加载或导入时清除端点的局部覆盖配置。
-export function migrateProjectBrush(project: Project): Project {
-  for (const glyph of project.glyphs)
-    for (const stroke of glyph.strokes) {
-      delete stroke.startTip;
-      delete stroke.endTip;
-      delete stroke.startBrush;
-      delete stroke.endBrush;
-    }
-  return project;
-}
-
 export function changeGlobalBrush(project: Project, patch: Partial<BrushDefaults>) {
   const brush = { ...(project.brush ?? defaultBrush), ...patch };
   project.brush = { ...brush, startBrush: { ...brush.startBrush }, endBrush: { ...brush.endBrush } };

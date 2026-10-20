@@ -7,7 +7,12 @@ import { ImportDialog } from "../features/tracing/ImportDialog";
 import { EditorCanvas } from "../features/editor/EditorCanvas";
 import { EditorContextMenu } from "../features/editor/EditorContextMenu";
 import { Properties } from "../features/editor/Properties";
-import { ProjectProvider, useEditTransaction, useProject, useProjectActions, useProjectApi } from "../features/project/useProject";
+import {
+  ProjectProvider,
+  useProject,
+  useProjectActions,
+  useProjectApi,
+} from "../features/project/useProject";
 import { activeGlyph } from "../features/project/projectStore";
 import { useProjectFiles } from "../features/project/useProjectFiles";
 import { useEditorCommands } from "../features/editor/useEditorCommands";
@@ -15,58 +20,76 @@ import { GlyphSidebar } from "../features/editor/GlyphSidebar";
 import { RenameGlyphDialog } from "../features/editor/RenameGlyphDialog";
 
 export default function App({ initialProject }: { initialProject: Project }) {
-  return <ProjectProvider initialProject={initialProject}><Workspace /></ProjectProvider>;
+  return (
+    <ProjectProvider initialProject={initialProject}>
+      <Workspace />
+    </ProjectProvider>
+  );
 }
 
-function ProjectName() {
-  const name = useProject((s) => s.project.name);
-  const { update } = useProjectActions();
-  const { begin, finish } = useEditTransaction();
-  return <input aria-label="手稿名称" value={name}
-    onFocus={() => { begin(); }}
-    onChange={(e) => { update((_, p) => { p.name = e.target.value; }, begin()); }}
-    onBlur={() => {
-      if (!name.trim()) update((_, p) => { p.name = "未命名手稿"; }, begin());
-      finish();
-    }} />;
-}
-
-function ProjectImportDialog(props: Omit<Parameters<typeof ImportDialog>[0], "brush">) {
+function ProjectImportDialog(
+  props: Omit<Parameters<typeof ImportDialog>[0], "brush">,
+) {
   const brush = useProject((s) => s.project.brush);
   return <ImportDialog {...props} brush={brush} />;
 }
 
+function ProjectSaveError({ exportProject }: { exportProject: () => void }) {
+  const error = useProject((s) => s.saveError);
+  if (!error) return null;
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e6cbb8] bg-[#fff3e9] px-4 py-2 text-xs text-[#a04c32]"
+    >
+      <span>{error}</span>
+      <button
+        className="shrink-0 underline underline-offset-2"
+        onClick={exportProject}
+      >
+        导出应急副本
+      </button>
+    </div>
+  );
+}
+
 function Workspace() {
   const [contextMenu, setContextMenu] = useState<Point | null>(null);
-  const [renamingGlyph, setRenamingGlyph] = useState<{ id: string; name: string } | null>(null);
+  const [renamingGlyph, setRenamingGlyph] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const api = useProjectApi();
-  const { update, select, selectNodes, switchGlyph, addGlyph } = useProjectActions();
+  const { update, select, selectNodes, switchGlyph, addGlyph } =
+    useProjectActions();
   const [toast, setToast] = useState(""),
-    [menu, setMenu] = useState<"export" | "project" | null>(null),
+    [menu, setMenu] = useState<"export" | null>(null),
     [shortcuts, setShortcuts] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null),
-    projectInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
-  const openContextMenu = (position: Point, n: string | null, s: string | null) => {
+  const openContextMenu = (
+    position: Point,
+    n: string | null,
+    s: string | null,
+  ) => {
     const nodeIds = api.getState().session.nodeIds;
-    if (n && nodeIds.includes(n)) selectNodes([...nodeIds.filter((id) => id !== n), n], s);
+    if (n && nodeIds.includes(n))
+      selectNodes([...nodeIds.filter((id) => id !== n), n], s);
     else select(n, s);
     setMenu(null);
     setContextMenu(position);
   };
-  const {
-    source, setSource, importFile, importProject, exportProject, saveSvg, savePng,
-  } = useProjectFiles({
-    closeMenu: () => setMenu(null),
-    toast: setToast,
-  });
+  const { source, setSource, importFile, exportProject, saveSvg, savePng } =
+    useProjectFiles({
+      closeMenu: () => setMenu(null),
+      toast: setToast,
+    });
   const { remove, duplicate } = useEditorCommands({
     toast: setToast,
     importing: !!source || !!renamingGlyph || !!contextMenu,
     shortcuts,
     setShortcuts,
     closeMenu: () => setMenu(null),
-    exportProject,
   });
   const upload = () => fileInput.current?.click();
   useEffect(() => {
@@ -92,78 +115,40 @@ function Workspace() {
           e.target.value = "";
         }}
       />
-      <input
-        ref={projectInput}
-        type="file"
-        accept=".json"
-        hidden
-        onChange={(e) => {
-          if (e.target.files?.[0]) void importProject(e.target.files[0]);
-          e.target.value = "";
-        }}
-      />
-      <header className="app-header h-[78px] shrink-0 bg-[#fcfdf9] border-b [border-bottom-style:solid] border-b-[var(--border)]
+      <header
+        className="app-header h-[78px] shrink-0 bg-[#fcfdf9] border-b [border-bottom-style:solid] border-b-[var(--border)]
         flex items-center py-0 px-[26px] gap-[23px] z-[20] wide:py-0 wide:px-[30px] laptop:py-0 laptop:px-[18px]
         laptop:gap-[16px] tablet:h-[68px] tablet:py-0 tablet:px-[14px] tablet:gap-[14px] compact:h-[64px]
-        compact:py-0 compact:px-[12px] compact:gap-[10px] phone:py-0 phone:px-[9px] phone:gap-[7px]">
-        <div className="brand flex items-center gap-[11px] shrink-0 [&>span:last-child]:text-[20px] [&>span:last-child]:font-[650]
+        compact:py-0 compact:px-[12px] compact:gap-[10px] phone:py-0 phone:px-[9px] phone:gap-[7px]"
+      >
+        <div
+          className="brand flex items-center gap-[11px] shrink-0 [&>span:last-child]:text-[20px] [&>span:last-child]:font-[650]
           [&>span:last-child]:leading-[1.1] [&>span:last-child]:tracking-[3px]
-          tablet:[&>span:last-child]:text-[18px] phone:gap-[7px] phone:[&>span:last-child]:text-[16px]">
-          <span className="brand-mark grid place-items-center w-[37px] h-[39px] bg-[#2d4d39] rounded-[9px] text-[#e0edc6]
-            [&_svg]:w-[26px] [&_svg]:h-[26px] tablet:h-[34px] tablet:w-[32px] phone:w-[29px] [&_svg]:stroke-current [&_svg]:fill-none [&_svg]:[stroke-width:1.8] [&_svg]:[stroke-linejoin:miter]">
+          tablet:[&>span:last-child]:text-[18px] phone:gap-[7px] phone:[&>span:last-child]:text-[16px]"
+        >
+          <span
+            className="brand-mark grid place-items-center w-[37px] h-[39px] bg-[#2d4d39] rounded-[9px] text-[#e0edc6]
+            [&_svg]:w-[26px] [&_svg]:h-[26px] tablet:h-[34px] tablet:w-[32px] phone:w-[29px] [&_svg]:stroke-current [&_svg]:fill-none [&_svg]:[stroke-width:1.8] [&_svg]:[stroke-linejoin:miter]"
+          >
             <svg viewBox="0 0 30 30">
               <path d="M5 23V11L15 4l10 7v12M5 16h20M15 4v22M8 25l7-9 7 9" />
             </svg>
           </span>
           <span>
-            造字<span className="brand-latin block text-[12px] tracking-[2.15px] mt-[6px] font-semibold text-[#7e897c]">COINAGE</span>
+            造字
+            <span className="brand-latin block text-[12px] tracking-[2.15px] mt-[6px] font-semibold text-[#7e897c]">
+              COINAGE
+            </span>
           </span>
         </div>
-        <div className="document-title flex items-center gap-[12px] [&>input]:w-[145px] [&>input]:[border:0]
-          [&>input]:bg-[transparent] [&>input]:text-[13px] [&>input]:text-[#586052] [&>input]:py-[7px]
-          [&>input]:px-0 [&_.icon-button]:w-[25px] [&_.icon-button]:h-[28px] laptop:[&>input]:w-[130px]
-          laptop:gap-[7px] tablet:[&>input]:w-[107px] tablet:[&>input]:text-[12px] tablet:[&_.header-divider]:m-0
-          compact:gap-[3px] compact:[&>input]:w-[102px] phone:[&>input]:hidden
-          phone:[&>.header-divider]:hidden phone:ml-[-6px]">
-          <span className="header-divider w-[1px] h-[27px] bg-[var(--border)] mr-[6px]" />
-          <ProjectName />
-          <div
-            className="dropdown-wrap relative"
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <IconButton
-              icon="chevron"
-              title="手稿菜单"
-              onClick={() => setMenu(menu === "project" ? null : "project")}
-            />
-            {menu === "project" && (
-              <div className="dropdown project-dropdown absolute top-[calc(100%_+_9px)] right-0 bg-[#fcfdf9] border [border-style:solid]
-                border-[#dfe3d7] shadow-[0_10px_35px_#22321a14] rounded-[9px] w-[204px] p-[6px] z-[50] [&_button]:flex
-                [&_button]:items-center [&_button]:gap-[10px] [&_button]:w-full [&_button]:text-[12px]
-                [&_button]:py-[11px] [&_button]:px-[10px] [&_button]:text-left [&_button]:rounded-[5px] left-[-20px]
-                right-auto [&_button:hover]:bg-[#edf2e6]">
-                <button
-                  onClick={() => {
-                    projectInput.current?.click();
-                    setMenu(null);
-                  }}
-                >
-                  <Icon name="folder" />
-                  打开手稿
-                </button>
-                <button onClick={exportProject}>
-                  <Icon name="save" />
-                  保存手稿文件
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
       </header>
-      <div className="workspace flex-1 min-h-0 grid grid-cols-[224px_minmax(280px,_1fr)_258px]
+      <ProjectSaveError exportProject={exportProject} />
+      <div
+        className="workspace flex-1 min-h-0 grid grid-cols-[224px_minmax(280px,_1fr)_258px]
         wide:grid-cols-[250px_minmax(280px,_1fr)_280px] laptop:grid-cols-[185px_minmax(280px,_1fr)_232px]
         tablet:grid-cols-[154px_minmax(280px,_1fr)_214px] compact:grid-cols-[88px_minmax(0,_1fr)] compact:relative
-        phone:grid-cols-[76px_minmax(0,_1fr)]">
+        phone:grid-cols-[76px_minmax(0,_1fr)]"
+      >
         <GlyphSidebar
           openGlyphContextMenu={(id, position) => {
             switchGlyph(id);
@@ -185,8 +170,11 @@ function Workspace() {
                 [&>.button]:[border-right-style:solid] [&>.button]:border-r-[#52705b]"
               onPointerDown={(e) => e.stopPropagation()}
             >
-              <button className={`button primary flex-1 min-w-0 px-[14px] h-[37px] inline-flex items-center justify-center gap-[8px] border
-                [border-style:solid] border-[#dfe4d7] rounded-[6px] text-[12px] font-[550] whitespace-nowrap ${buttonStateClasses}`} onClick={saveSvg}>
+              <button
+                className={`button primary flex-1 min-w-0 px-[14px] h-[37px] inline-flex items-center justify-center gap-[8px] border
+                [border-style:solid] border-[#dfe4d7] rounded-[6px] text-[12px] font-[550] whitespace-nowrap ${buttonStateClasses}`}
+                onClick={saveSvg}
+              >
                 <Icon name="download" />
                 导出 SVG
               </button>
@@ -200,10 +188,12 @@ function Workspace() {
                 <Icon name="chevron" size={16} />
               </button>
               {menu === "export" && (
-                <div className="dropdown export-dropdown absolute bottom-[calc(100%_+_9px)] right-0 bg-[#fcfdf9] border [border-style:solid]
+                <div
+                  className="dropdown export-dropdown absolute bottom-[calc(100%_+_9px)] right-0 bg-[#fcfdf9] border [border-style:solid]
                   border-[#dfe3d7] shadow-[0_10px_35px_#22321a14] rounded-[9px] w-[204px] p-[6px] z-[50] [&_button]:flex
                   [&_button]:items-center [&_button]:gap-[10px] [&_button]:w-full [&_button]:text-[12px]
-                  [&_button]:py-[11px] [&_button]:px-[10px] [&_button]:text-left [&_button]:rounded-[5px] [&_button:hover]:bg-[#edf2e6]">
+                  [&_button]:py-[11px] [&_button]:px-[10px] [&_button]:text-left [&_button]:rounded-[5px] [&_button:hover]:bg-[#edf2e6]"
+                >
                   <button onClick={saveSvg}>
                     <Icon name="node" />
                     SVG 矢量图
@@ -211,10 +201,6 @@ function Workspace() {
                   <button onClick={savePng}>
                     <Icon name="image" />
                     PNG 透明图片
-                  </button>
-                  <button onClick={exportProject}>
-                    <Icon name="file" />
-                    JSON 可编辑手稿
                   </button>
                 </div>
               )}
@@ -275,8 +261,10 @@ function Workspace() {
             aria-modal="true"
             aria-label="快捷键"
           >
-            <div className="modal-heading flex items-center justify-between mb-[23px] [&_h2]:text-[20px] [&_h2]:tracking-[1px]
-              [&_h2]:font-semibold [&_h2]:mt-[5px] [&_h2]:mx-0 [&_h2]:mb-0">
+            <div
+              className="modal-heading flex items-center justify-between mb-[23px] [&_h2]:text-[20px] [&_h2]:tracking-[1px]
+              [&_h2]:font-semibold [&_h2]:mt-[5px] [&_h2]:mx-0 [&_h2]:mb-0"
+            >
               <h2>快捷键</h2>
               <IconButton
                 icon="close"
@@ -284,10 +272,12 @@ function Workspace() {
                 onClick={() => setShortcuts(false)}
               />
             </div>
-            <div className="shortcut-list flex flex-col gap-0 [&>div]:flex [&>div]:items-center [&>div]:justify-between
+            <div
+              className="shortcut-list flex flex-col gap-0 [&>div]:flex [&>div]:items-center [&>div]:justify-between
               [&>div]:text-[12px] [&>div]:gap-[20px] [&>div]:min-h-[36px] [&>div]:border-b
               [&>div]:[border-bottom-style:solid] [&>div]:border-b-[#e8ecdf] [&>div:last-child]:[border:0]
-              [&_kbd]:text-[#81936e] phone:[&>div]:gap-[10px]">
+              [&_kbd]:text-[#81936e] phone:[&>div]:gap-[10px]"
+            >
               {[
                 ["选择 / 钢笔 / 分支 / 平移", "V / P / B / H"],
                 ["从节点拉出新笔画", "Alt + 拖动"],
@@ -303,13 +293,15 @@ function Workspace() {
                 ["网格", "G"],
                 ["适应画布", "0"],
                 ["撤销 / 重做", "Ctrl Z / Ctrl Shift Z"],
-                ["保存手稿文件", "Ctrl S"],
+                ["立即保存到本机", "Ctrl S"],
                 ["删除节点 / 笔画", "Delete"],
                 ["结束绘制", "Esc"],
               ].map(([label, key]) => (
                 <div key={label}>
                   <span>{label}</span>
-                  <kbd className="[font:12px_ui-monospace,monospace]">{key}</kbd>
+                  <kbd className="[font:12px_ui-monospace,monospace]">
+                    {key}
+                  </kbd>
                 </div>
               ))}
             </div>
@@ -317,9 +309,12 @@ function Workspace() {
         </div>
       )}
       {toast && (
-        <div className="toast fixed bottom-[28px] left-[50%] z-[150] flex items-center gap-[10px] py-[13px] px-[20px] bg-[#2f4d3c]
+        <div
+          className="toast fixed bottom-[28px] left-[50%] z-[150] flex items-center gap-[10px] py-[13px] px-[20px] bg-[#2f4d3c]
           text-[#f1f7e9] border [border-style:solid] border-[#49654f] rounded-[9px] shadow-[0_4px_20px_#16301e25]
-          text-[12px] max-w-[90vw] [&>svg]:text-[#c2dba2] [transform:translateX(-50%)] animate-[toast-in_0.2s_ease-out]" role="status">
+          text-[12px] max-w-[90vw] [&>svg]:text-[#c2dba2] [transform:translateX(-50%)] animate-[toast-in_0.2s_ease-out]"
+          role="status"
+        >
           <Icon name="check" size={17} />
           {toast}
         </div>

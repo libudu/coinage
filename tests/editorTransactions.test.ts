@@ -36,7 +36,7 @@ function manuscript(): Project {
   glyph.nodes = { a: { id: "a", x: 100, y: 100, width: 30, mode: "corner" },
     b: { id: "b", x: 200, y: 200, width: 30, mode: "corner" } };
   glyph.strokes = [newStroke(["a", "b"], 0)];
-  return { version: 1, name: "测试", activeId: glyph.id, glyphs: [glyph, emptyGlyph("乙")],
+  return { version: 1, activeId: glyph.id, glyphs: [glyph, emptyGlyph("乙")],
     brush: { ...defaultBrush, startTip: "horizontal" } };
 }
 async function render(t: TestContext, Component: ComponentType) {
@@ -97,6 +97,25 @@ test("a visibility flush before the first branch move does not persist provision
   });
   assert.equal(store.getState().committedProject, before);
   assert.equal(store.getState().past.length, 0);
+});
+
+test("Ctrl+S and Command+S commit a focused control and immediately save to the local service", async (t) => {
+  const { store, container } = await render(t, () => h("input"));
+  const saved: Project[] = [];
+  t.mock.method(projectStorage, "save", async (project: Project) => { saved.push(project); });
+  const input = container.querySelector("input")!;
+  for (const modifier of ["ctrlKey", "metaKey"]) {
+    const id = store.getState().actions.beginTransaction();
+    store.getState().actions.update((_, p) => { p.glyphs[0].name = modifier; }, id);
+    const event = new dom.window.KeyboardEvent("keydown", { key: "s", [modifier]: true,
+      bubbles: true, cancelable: true });
+    await act(async () => { input.dispatchEvent(event); });
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(store.getState().transaction, null);
+    assert.equal(saved.at(-1)?.glyphs[0].name, modifier);
+    assert.equal(store.getState().saved, "saved");
+  }
+  assert.equal(saved.length, 2);
 });
 
 test("a second pointer cannot move or finish the first pointer's branch transaction", async (t) => {

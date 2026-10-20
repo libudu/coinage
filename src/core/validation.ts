@@ -1,4 +1,4 @@
-import { brushTips, isBrushDefaults, isBrushSettings } from "./brush";
+import { isBrushDefaults } from "./brush";
 import type { Project } from "./model";
 
 export function isProject(value: unknown): value is Project {
@@ -19,7 +19,6 @@ export function isProject(value: unknown): value is Project {
     return (
       p.version === 1 &&
       (p.brush === undefined || isBrushDefaults(p.brush)) &&
-      typeof p.name === "string" &&
       Array.isArray(p.glyphs) &&
       p.glyphs.length > 0 &&
       p.glyphs.length <= 100 &&
@@ -35,7 +34,7 @@ export function isProject(value: unknown): value is Project {
           Number.isFinite(g.referenceOpacity) &&
           g.referenceOpacity >= 0 &&
           g.referenceOpacity <= 100 &&
-          g.nodes &&
+          g.nodes && typeof g.nodes === "object" && !Array.isArray(g.nodes) &&
           Object.values(g.nodes).length < 20000 &&
           Object.entries(g.nodes).every(
             ([key, n]) =>
@@ -62,14 +61,10 @@ export function isProject(value: unknown): value is Project {
               typeof s.visible === "boolean" &&
               typeof s.locked === "boolean" &&
               ["butt", "round", "square"].includes(s.cap) &&
-              (s.startTip === undefined || s.startTip === "basic" || brushTips.includes(s.startTip)) &&
-              (s.endTip === undefined || s.endTip === "basic" || brushTips.includes(s.endTip)) &&
-              (s.startBrush === undefined || isBrushSettings(s.startBrush)) &&
-              (s.endBrush === undefined || isBrushSettings(s.endBrush)) &&
               ["miter", "round", "bevel"].includes(s.join) &&
               Array.isArray(s.nodes) &&
               s.nodes.length >= 2 &&
-              s.nodes.every((id) => !!g.nodes[id]),
+              s.nodes.every((id) => typeof id === "string" && Object.hasOwn(g.nodes, id)),
           ),
       )
     );

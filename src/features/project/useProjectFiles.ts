@@ -1,7 +1,5 @@
 import { useState } from "react";
 import { exportSvg } from "../../core/svg";
-import { isProject } from "../../core/validation";
-import { migrateProjectBrush } from "../../core/brush";
 import { download, safeName } from "../../shared/utils/files";
 import { useProjectActions, useProjectApi } from "./useProject";
 import { activeGlyph } from "./projectStore";
@@ -16,7 +14,7 @@ export function useProjectFiles({
   toast,
 }: Options) {
   const api = useProjectApi();
-  const { replace, commitTransaction } = useProjectActions();
+  const { commitTransaction } = useProjectActions();
   const [source, setSource] = useState<{ src: string; name: string } | null>(null);
   const importFile = (file: File) => {
     if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
@@ -33,23 +31,12 @@ export function useProjectFiles({
     reader.onerror = () => toast("图片读取失败");
     reader.readAsDataURL(file);
   };
-  const importProject = async (file: File) => {
-    try {
-      if (file.size > 30 * 1024 * 1024) throw new Error();
-      const value: unknown = JSON.parse(await file.text());
-      if (!isProject(value)) throw new Error();
-      replace(migrateProjectBrush(value));
-      toast("手稿已打开");
-    } catch {
-      toast("请选择有效的造字手稿 JSON 文件");
-    }
-  };
   const exportProject = () => {
     commitTransaction();
     const { project } = api.getState();
     download(
       JSON.stringify(project, null, 2),
-      `${safeName(project.name)}.coinage.json`,
+      "手稿应急副本.coinage.json",
       "application/json",
     );
     closeMenu();
@@ -98,6 +85,6 @@ export function useProjectFiles({
     closeMenu();
   };
   return {
-    source, setSource, importFile, importProject, exportProject, saveSvg, savePng,
+    source, setSource, importFile, exportProject, saveSvg, savePng,
   };
 }

@@ -99,5 +99,5 @@ export function demoProject(): Project {
     });
     return g;
   });
-  return { version: 1, name: "我的造字手稿", glyphs, activeId: glyphs[0].id };
+  return { version: 1, glyphs, activeId: glyphs[0].id };
 }

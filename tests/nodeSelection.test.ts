@@ -64,7 +64,7 @@ test("batch deletion keeps shared references valid and preserves unrelated stand
   assert.equal(glyph.strokes.length, 1);
   assert.deepEqual(glyph.strokes[0].nodes, ["1", "3"]);
   assert.deepEqual(Object.keys(glyph.nodes), ["1", "3", "4"]);
-  assert.ok(isProject({ version: 1, name: "test", glyphs: [glyph], activeId: glyph.id }));
+  assert.ok(isProject({ version: 1, glyphs: [glyph], activeId: glyph.id }));
   removeNodes(glyph, ["1", "3", "4"]);
   assert.deepEqual(glyph.nodes, {});
   assert.deepEqual(glyph.strokes, []);

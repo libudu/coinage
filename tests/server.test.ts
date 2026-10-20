@@ -7,6 +7,8 @@ import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { createApp } from "../src/server/app";
 import { demoProject } from "../src/core/demo";
+import { createProjectPatch } from "../src/core/projectPatch";
+import { ProjectStorage } from "../src/features/project/projectStorage";
 
 async function fixture(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), "coinage-test-"));
@@ -26,7 +28,10 @@ async function fixture(t: TestContext) {
   const put = (project: unknown, revision: string | null) => fetch(`${url}/api/project`, {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ project, revision }),
   });
-  return { root, dataDir, url, get, put };
+  const patch = (changes: unknown, revision: string | null, requestId = crypto.randomUUID()) => fetch(`${url}/api/project`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ changes, revision, requestId }),
+  });
+  return { root, dataDir, url, get, put, patch };
 }
 
 test("local store initializes, persists valid projects and keeps the previous save as a backup", async (t) => {
@@ -36,13 +41,13 @@ test("local store initializes, persists valid projects and keeps the previous sa
   const first = await put(project, null);
   assert.equal(first.status, 200);
   const { revision } = await first.json();
-  project.name = "本地手稿";
+  project.glyphs[0].name = "本地手稿";
   assert.equal((await put(project, revision)).status, 200);
   const stored = await (await get()).json();
-  assert.equal(stored.project.name, "本地手稿");
+  assert.equal(stored.project.glyphs[0].name, "本地手稿");
   assert.notEqual(stored.revision, revision);
   assert.deepEqual(JSON.parse(await readFile(join(dataDir, "project.json"), "utf8")), project);
-  assert.notEqual(JSON.parse(await readFile(join(dataDir, "project.backup.json"), "utf8")).name, project.name);
+  assert.notEqual(JSON.parse(await readFile(join(dataDir, "project.backup.json"), "utf8")).glyphs[0].name, project.glyphs[0].name);
   const backup = await readFile(join(dataDir, "project.backup.json"), "utf8");
   // 模拟服务已落盘、响应丢失时携带旧版本重试，以及刷新后的无修改保存。
   assert.equal((await put(project, revision)).status, 200);
@@ -53,7 +58,7 @@ test("local store initializes, persists valid projects and keeps the previous sa
 test("concurrent stale saves cannot overwrite the winning manuscript", async (t) => {
   const { get, put } = await fixture(t);
   const a = demoProject(), b = structuredClone(a);
-  a.name = "页面 A"; b.name = "页面 B";
+  a.glyphs[0].name = "页面 A"; b.glyphs[0].name = "页面 B";
   const results = await Promise.all([put(a, null), put(b, null)]);
   assert.deepEqual(results.map((r) => r.status).sort(), [200, 409]);
   const winner = results[0].status === 200 ? a : b;
@@ -101,4 +106,105 @@ test("oversized requests receive an actionable error without touching disk", asy
   assert.equal(result.status, 413);
   assert.match(JSON.parse(result.text).error, /64 MB/);
   assert.equal((await (await get()).json()).project, null);
+});
+
+test("PATCH merges only changed fields, preserves originals and backs up the previous full document", async (t) => {
+  const { dataDir, get, put, patch } = await fixture(t);
+  const original = demoProject();
+  original.glyphs[0].reference = `data:image/png;base64,${"A".repeat(100000)}`;
+  assert.equal((await patch([], null)).status, 409);
+  const { revision } = await (await put(original, null)).json();
+  const next = structuredClone(original);
+  Object.values(next.glyphs[0].nodes)[0].x += 1;
+  next.glyphs[0].referenceOpacity = 55;
+  const changes = createProjectPatch(original, next);
+  assert.ok(!JSON.stringify(changes).includes("data:image"));
+  const response = await patch(changes, revision);
+  assert.equal(response.status, 200);
+  assert.notEqual((await response.json()).revision, revision);
+  assert.deepEqual((await (await get()).json()).project, next);
+  assert.deepEqual(JSON.parse(await readFile(join(dataDir, "project.backup.json"), "utf8")), original);
+});
+
+test("concurrent PATCH requests retain revision conflicts and retries never rotate the backup", async (t) => {
+  const { dataDir, get, put, patch } = await fixture(t);
+  const original = demoProject();
+  const { revision } = await (await put(original, null)).json();
+  const a = structuredClone(original), b = structuredClone(original);
+  a.glyphs[0].color = "#123456"; b.glyphs[0].color = "#654321";
+  const changes = [createProjectPatch(original, a), createProjectPatch(original, b)];
+  const ids = [crypto.randomUUID(), crypto.randomUUID()];
+  const results = await Promise.all(changes.map((change, i) => patch(change, revision, ids[i])));
+  assert.deepEqual(results.map((response) => response.status).sort(), [200, 409]);
+  const winner = results[0].status === 200 ? 0 : 1;
+  const backup = await readFile(join(dataDir, "project.backup.json"), "utf8");
+  assert.equal((await patch(changes[winner], revision, ids[winner])).status, 200);
+  assert.equal(await readFile(join(dataDir, "project.backup.json"), "utf8"), backup);
+  assert.equal((await patch(changes[winner], revision)).status, 409);
+  assert.equal((await patch(changes[1 - winner], revision, ids[winner])).status, 409);
+  assert.deepEqual((await (await get()).json()).project, winner === 0 ? a : b);
+});
+
+test("invalid patches and inherited node references never change the file or backup", async (t) => {
+  const { dataDir, get, put, patch } = await fixture(t);
+  const original = demoProject();
+  const { revision } = await (await put(original, null)).json();
+  const next = structuredClone(original); next.glyphs[0].color = "#123456";
+  const { revision: current } = await (await patch(createProjectPatch(original, next), revision)).json();
+  const file = await readFile(join(dataDir, "project.json"), "utf8");
+  const backup = await readFile(join(dataDir, "project.backup.json"), "utf8");
+  const glyph = next.glyphs[0];
+  const invalid = [null, [{ op: "set", path: [], value: original }],
+    [{ op: "set", path: ["__proto__", "polluted"], value: true }],
+    [{ op: "set", path: ["glyphs", glyph.id, "nodes", "missing", "x"], value: 1 }],
+    [{ op: "set", path: ["glyphs", glyph.id, "strokes", glyph.strokes[0].id, "nodes"], value: ["constructor", "toString"] }],
+    [{ op: "remove", path: ["glyphs", glyph.id, "nodes", glyph.strokes[0].nodes[0]] }],
+  ];
+  for (const changes of invalid) assert.equal((await patch(changes, current)).status, 400);
+  assert.equal(await readFile(join(dataDir, "project.json"), "utf8"), file);
+  assert.equal(await readFile(join(dataDir, "project.backup.json"), "utf8"), backup);
+  assert.deepEqual((await (await get()).json()).project, next);
+  assert.equal(({} as { polluted?: boolean }).polluted, undefined);
+});
+
+test("real storage retries a lost PATCH response before sending later edits without original images", async (t) => {
+  const { url, get, put } = await fixture(t);
+  const original = demoProject(); original.glyphs[0].reference = "data:image/png;base64,AAAA";
+  await put(original, null);
+  const bodies: string[] = [];
+  const storage = new ProjectStorage(async (input, options) => {
+    const response = await fetch(new URL(input as string, url), options);
+    if (options?.method === "PATCH") {
+      bodies.push(options.body as string);
+      if (bodies.length === 1) {
+        assert.equal(response.status, 200);
+        await response.arrayBuffer();
+        throw new Error("模拟响应丢失");
+      }
+    }
+    return response;
+  });
+  const project = await storage.load(), edit = structuredClone(project);
+  Object.values(edit.glyphs[0].nodes)[0].x += 1;
+  await assert.rejects(storage.save(edit), /连接本地服务失败/);
+  const latest = structuredClone(edit); latest.glyphs[0].color = "#123456";
+  await storage.save(latest);
+  assert.equal(bodies.length, 3);
+  assert.equal(bodies[0], bodies[1]);
+  assert.ok(bodies.every((text) => !text.includes("data:image")));
+  assert.deepEqual((await (await get()).json()).project, latest);
+});
+
+test("a small patch cannot grow the merged project beyond 64 MB", async (t) => {
+  const { dataDir, get, patch } = await fixture(t);
+  const original = demoProject();
+  original.glyphs[0].reference = "data:image/png;base64,";
+  const padding = "A".repeat(64 * 1024 * 1024 - Buffer.byteLength(JSON.stringify(original)) - 16);
+  original.glyphs[0].reference += padding;
+  await mkdir(dataDir);
+  await writeFile(join(dataDir, "project.json"), JSON.stringify(original));
+  const { revision } = await (await get()).json();
+  const response = await patch([{ op: "set", path: ["glyphs", original.glyphs[0].id, "name"], value: "A".repeat(100) }], revision);
+  assert.equal(response.status, 413);
+  assert.equal((await (await get()).json()).revision, revision);
 });

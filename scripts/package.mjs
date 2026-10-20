@@ -21,7 +21,7 @@ catch (error) {
 }
 await writeFile(join(dist, "runtime/LICENSE"), license);
 await copyFile(join(root, "dist-template/双击运行.bat"), join(dist, "双击运行.bat"));
-await writeFile(join(dist, "使用说明.txt"), "Coinage 本地版\r\n\r\n双击「双击运行.bat」，浏览器会自动打开。请保持命令窗口开启。\r\n手稿自动保存在 data/project.json，上一次保存位于 data/project.backup.json。\r\n备份或迁移时复制整个 data 文件夹。升级时先关闭服务，再替换 client、server、runtime 和启动文件，保留 data。\r\n首次使用可从手稿菜单导入旧版导出的 JSON 手稿。清理浏览器不会删除本地文件。\r\n");
+await writeFile(join(dist, "使用说明.txt"), "Coinage 本地版\r\n\r\n双击「双击运行.bat」，浏览器会自动打开。请保持命令窗口开启。\r\n编辑提交后按三秒窗口自动保存到 data/project.json，Ctrl+S 可立即保存，上一次保存位于 data/project.backup.json。\r\n备份或迁移时复制整个 data 文件夹。升级时先关闭服务，再替换 client、server、runtime 和启动文件，保留 data。\r\n恢复应急副本时，先关闭服务并备份 data，再将副本复制为 data/project.json。清理浏览器不会删除本地文件。\r\n");
 console.log(`便携包已生成：${dist}（附带 Node ${info.version} ${info.arch}，无需安装依赖）`);
 const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const archivePath = join(root, `Coinage v${pkg.version}.zip`);

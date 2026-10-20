@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { isProject } from "../core/validation";
+import { applyProjectPatch, isProjectPatch } from "../core/projectPatch";
 
 const MAX_BODY = 64 * 1024 * 1024;
 const mime: Record<string, string> = {
@@ -50,6 +51,7 @@ export function createApp(options: { dataDir: string; clientDir?: string }) {
   const instance = createHash("sha256").update(dataDir).digest("hex");
   // 同一进程内串行比较版本并写入，避免多个标签页静默覆盖手稿。
   let writes: Promise<unknown> = Promise.resolve();
+  let lastPatch: { requestId: string; fingerprint: string; revision: string } | null = null;
   async function read() {
     let text: string;
     try { text = await readFile(file, "utf8"); }
@@ -73,17 +75,33 @@ export function createApp(options: { dataDir: string; clientDir?: string }) {
       } else if (url.pathname === "/api/project" && req.method === "GET") {
         await writes;
         json(res, 200, await read());
-      } else if (url.pathname === "/api/project" && req.method === "PUT") {
+      } else if (url.pathname === "/api/project" && (req.method === "PUT" || req.method === "PATCH")) {
         if (!req.headers["content-type"]?.startsWith("application/json")) throw new RequestError(415, "需要 JSON 格式");
-        const value = await body(req) as { project?: unknown; revision?: unknown } | null;
-        if (!value || !isProject(value.project) || !(value.revision === null || typeof value.revision === "string"))
+        const patch = req.method === "PATCH";
+        const value = await body(req) as { project?: unknown; revision?: unknown; changes?: unknown; requestId?: unknown } | null;
+        if (!value || !(value.revision === null || typeof value.revision === "string")
+          || (patch ? !isProjectPatch(value.changes) || typeof value.requestId !== "string"
+            || !value.requestId.length || value.requestId.length > 128 : !isProject(value.project)))
           throw new RequestError(400, "手稿格式不正确");
-        const text = JSON.stringify(value.project);
+        const fingerprint = patch ? createHash("sha256").update(JSON.stringify(value)).digest("hex") : "";
         const write = writes.then(async () => {
           const previous = await read();
+          // 只确认同一请求、同一内容且磁盘仍为该次结果的重试，不能放过其他页面的旧版本。
+          if (patch && lastPatch && lastPatch.requestId === value.requestId && lastPatch.fingerprint === fingerprint
+            && lastPatch.revision === previous.revision) return previous.revision!;
+          const conflict = () => { throw new RequestError(409, "手稿已在其他页面修改，请导出当前手稿后刷新"); };
+          let project = value.project;
+          if (patch) {
+            if (previous.revision !== value.revision || !previous.project) conflict();
+            try { project = applyProjectPatch(previous.project!, value.changes); }
+            catch { throw new RequestError(400, "手稿补丁格式、路径或节点引用不正确"); }
+          }
+          const text = JSON.stringify(project);
+          // 增量请求虽小，合并后的完整手稿仍须满足大小限制。
+          if (Buffer.byteLength(text) > MAX_BODY) throw new RequestError(413, "手稿超过 64 MB，请减少原图后重试");
           // 刷新后的相同内容和响应丢失后的重试不轮换备份，也不产生冲突。
           if (previous.project && JSON.stringify(previous.project) === text) return previous.revision!;
-          if (previous.revision !== value.revision) throw new RequestError(409, "手稿已在其他页面修改，请导出当前手稿后刷新");
+          if (previous.revision !== value.revision) conflict();
           await mkdir(dataDir, { recursive: true });
           const temp = join(dataDir, `project.${randomUUID()}.tmp`);
           try {
@@ -97,7 +115,9 @@ export function createApp(options: { dataDir: string; clientDir?: string }) {
             }
             await rename(temp, file);
           } finally { await rm(temp, { force: true }); }
-          return createHash("sha256").update(text).digest("hex");
+          const revision = createHash("sha256").update(text).digest("hex");
+          lastPatch = patch ? { requestId: value.requestId as string, fingerprint, revision } : null;
+          return revision;
         });
         writes = write.catch(() => {});
         json(res, 200, { revision: await write });

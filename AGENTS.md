@@ -17,8 +17,9 @@ src/
 │   ├── geometry.ts            # 几何工具、中心线、连接关系与填充轮廓
 │   ├── svg.ts                 # SVG 文档输出与 XML 转义
 │   ├── validation.ts          # 手稿格式与节点引用校验
+│   ├── projectPatch.ts        # 按 ID 和字段生成、校验与合并增量补丁
 │   ├── demo.ts                # 初始示例手稿
-│   └── brush.ts               # 笔锋预设、全局配置、旧数据迁移与端部轮廓
+│   └── brush.ts               # 笔锋预设、全局配置与端部轮廓
 ├── features/
 │   ├── editor/
 │   │   ├── EditorCanvas.tsx    # 画布视口、工具栏、标尺与视图快捷键
@@ -40,15 +41,15 @@ src/
 │   ├── tracing/
 │   │   ├── ImportDialog.tsx    # 图片导入与识别参数预览
 │   │   ├── trace.ts            # 前景分离、骨架提取、路径简化与图片读取
-│   │   ├── traceSettings.ts    # 导入参数的本地记忆与兼容读取
+│   │   ├── traceSettings.ts    # 导入参数的本地记忆与校验读取
 │   │   ├── createTraceWorker.ts # 描摹 Worker 工厂
 │   │   └── trace.worker.ts     # 后台转换入口
 │   └── project/
 │       ├── projectStore.ts    # Zustand 手稿、会话、历史与编辑事务
-│       ├── projectAutosave.ts # 已提交手稿的防抖保存、重试与状态
+│       ├── projectAutosave.ts # 已提交手稿的三秒节流保存、重试与状态
 │       ├── useProject.tsx     # 状态 Provider、按需订阅与控件事务
-│       ├── projectStorage.ts  # 本地服务存储、旧手稿迁移与保存队列
-│       └── useProjectFiles.ts # 图片读取、JSON 导入及 JSON/SVG/PNG 导出
+│       ├── projectStorage.ts  # 本地服务增量存储、确认基线、重试与保存队列
+│       └── useProjectFiles.ts # 图片读取、应急 JSON 副本及 SVG/PNG 导出
 ├── server/
 │   ├── app.ts                 # 本机 API、手稿校验、版本冲突与原子文件写入
 │   └── index.ts               # 静态托管、端口与重复启动检查、打开浏览器
@@ -67,7 +68,8 @@ public/reference.png            # 可直接访问的导入示例
 tests/core.test.ts              # 几何、描摹、导出与数据校验测试
 tests/nodeSelection.test.ts     # 多节点移动、边界、锁定与删除测试
 tests/server.test.ts            # 本地读写、备份、版本冲突与访问限制测试
-tests/projectStorage.test.ts    # 旧手稿迁移、保存队列与错误测试
+tests/projectStorage.test.ts    # 初始化、增量保存队列与错误测试
+tests/projectPatch.test.ts      # 字段增量、原图省略、顺序与补丁校验测试
 tests/projectStore.test.ts      # 状态、事务、历史、选择与锁定测试
 tests/projectAutosave.test.ts   # 保存触发、重试、冲突与过期响应测试
 tests/editorTransactions.test.ts # jsdom 组件事件与事务边界回归测试
@@ -82,25 +84,38 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 
 ## 开发约定
 
-- 源码、测试和脚本中的说明性注释统一使用中文；API 名称、标识符和工具指令保留原样。
-- 项目统一使用 pnpm 管理依赖和运行脚本，版本以 `package.json` 的 `packageManager` 为准。只维护 `pnpm-lock.yaml`，不生成或提交 `package-lock.json`；文档和命令示例使用 `pnpm install`、`pnpm run <脚本>` 或 `pnpm exec <工具>`。
-- 新业务代码放入对应 `features` 子目录；跨功能复用的控件或工具放 `shared`。`app` 负责组装，`core` 不依赖 React 或业务界面。
-- 按职责直接导入核心模块：数据类型与工厂用 `model`，路径计算用 `geometry`，SVG 文档用 `svg`，手稿校验用 `validation`，示例数据用 `demo`；不在 `model` 中重新汇总这些模块。
-- 使用 TypeScript 和显式的相对导入；类型使用 `import type`。调整目录时同步更新测试、README 和本文档中的路径。
-- 样式优先使用 Tailwind CSS；仅在使用 Tailwind CSS 实现较为繁琐时编写自定义 CSS。
-- 组件常规样式写在 JSX 的 Tailwind 类中；语义类名用于组合状态和少量复杂选择器。响应式使用 `wide`（≥1600px）、`laptop`（≤1150px）、`tablet`（≤900px）、`compact`（≤760px）、`phone`（≤490px），保留现有断点的包含边界及覆盖顺序。全局重置放在 `base` 层，避免覆盖工具类。
-- `src/styles` 只放全局规则。模块专属样式优先写成组件内的 Tailwind 类；确需自定义 CSS 时与组件就近放置、由组件显式导入，并使用专属类名限定范围。跨模块复用的样式与控件归 `shared`，不要为少量可直接表达的样式另建 CSS 文件。
-- 滑块统一使用 `shared/components/RangeInput.tsx`，笔锋微调使用其 `row` 变体；保留原生 input 的属性、ref 和事件透传，不通过全局 `input[type="range"]` 选择器设置业务外观。
-- 节点按 ID 存储，多条笔画可引用同一节点。修改几何或连接关系时保持引用有效，尊重笔画锁定状态。
-- 手稿与编辑会话通过 `projectStore` 的 actions 修改，组件使用 `useProject(selector)` 按需订阅，使用 `useProjectActions` 获取稳定操作；不把整份 store 或 `doc` 逐层传递。状态实例由 `ProjectProvider` 持有，不使用跨编辑器共享的模块级单例。
-- 修改通过 Immer 保留未变化分支的引用；派生字形、节点与笔画根据 ID 读取，不重复存储。连续拖拽、滑块和名称输入使用 `beginTransaction` / `commitTransaction` / `cancelTransaction`，控件优先复用 `useEditTransaction`，修改手稿的滑块统一使用 `TransactionalRange` 包装共享 `RangeInput`；每次事务只生成一条历史。指针事件只能结束所属指针的事务，事务 token 过期后的事件不得继续写入。分支仅在实际移动后创建几何，移回源点时移除临时分支。
-- 历史保留最近 60 步；新编辑提交后清空重做，取消或无变化事务不增加历史。选择、工具与原图显示属于会话，不参与历史或手稿保存；`Project.activeId` 保留 v1 持久化兼容，撤销时优先保留当前仍存在的字符。撤销重做、字符切换与选择目标变化须结束旧事务；事务内选择新建节点须显式传入所属 token。撤销重做和字符切换须清理失效选择。
-- 自动保存由 `projectAutosave` 订阅已提交手稿，预览更新不直接落盘；隐藏页面时先提交事务再刷新保存。保留防抖、重试、离页保护和过期响应检查，`projectStorage` 继续负责串行队列与服务端 revision。并发 flush 共享同一次保存结果；失败后不能靠旧的内存快照判定已保存，错误须持续显示直至保存成功。
-- 手稿级笔锋存于 `Project.brush`，所有笔画统一使用全局配置，锁定仅保护几何和连接关系；全局修改通过 `changeGlobalBrush`，加载与导入通过 `migrateProjectBrush` 清理旧的局部笔锋字段。画布、缩略图和导出均传入全局配置。
-- 保持 `Project.version` 的兼容性，并保留 `coinage.studio.v1` 旧浏览器手稿的迁移读取；新手稿只通过本地服务保存。修改数据格式时同步更新校验并处理旧手稿迁移。
-- 本地版通过 `/api/project` 读写 `data/project.json`，先完成读取再挂载编辑器；读取失败不能回退示例并覆盖文件。文件不存在时才读取当前来源的旧浏览器手稿。本地保存使用版本比较、串行写入和临时文件替换，上一版保留为 `project.backup.json`；失败须显示并允许导出当前手稿。
-- 服务仅监听 `127.0.0.1`，不引入数据库或额外服务端运行依赖。开发数据在项目根目录 `data/`，发布数据在 `dist/data/`，均不入库；构建不得清理用户数据。发布数据目录按服务文件位置定位，不能依赖启动时工作目录。
-- 描摹计算放在 Worker 中；保留 `new Worker(new URL("./trace.worker.ts", import.meta.url), { type: "module" })` 的 Vite 打包方式。SVG 导出使用真实路径。
-- `pnpm run build` 生成 `dist/client`、`dist/server`、`dist/runtime` 和 `双击运行.bat`，并在项目根目录生成 `Coinage v<版本号>.zip`，运行时只需包内 Node。ZIP 按运行文件清单打包，仅附带空 `data/`，不得收录已有手稿、备份或旧构建残留；本机数据不清理。JSZip 只作为开发依赖，失败时保留上一份完整 ZIP。内置 Node 默认复制构建机器的 `process.execPath` 和同目录 `LICENSE`，可用 `COINAGE_NODE_PATH` 指定 Windows Node。
-- 运行时资源须使用可打包的导入，不能依赖外部网络。`dist/client` 是本地服务托管的必要网页产物。
-- 保留已有素材及其文件名；图片处理继续在浏览器中完成，不上传到外部服务。
+### 代码与样式
+
+- 使用 pnpm，版本见 `package.json#packageManager`；只维护 `pnpm-lock.yaml`，不生成或提交 `package-lock.json`。文档命令也使用 pnpm。
+- 使用 TypeScript、显式相对导入和 `import type`；说明性注释用中文。目录变更同步更新测试、README 和本索引。
+- 业务代码放对应 `features`，复用控件和工具放 `shared`，`app` 负责组装，`core` 不依赖 React。核心模块按职责直接导入，不通过 `model` 汇总。
+- 常规样式使用 JSX Tailwind 类。自定义 CSS 就近放置、显式导入并限定类名范围；`src/styles` 仅放全局规则，重置放 `base` 层。
+- 响应式沿用 `wide`（≥1600px）、`laptop`（≤1150px）、`tablet`（≤900px）、`compact`（≤760px）、`phone`（≤490px），保留包含边界和覆盖顺序。
+- 滑块统一用 `RangeInput`，笔锋微调用 `row` 变体；保留原生属性、ref 和事件透传，不用全局 range 选择器设置业务外观。
+
+### 状态与编辑
+
+- 状态由每个 `ProjectProvider` 独立持有；通过 `projectStore` actions 修改，组件用 `useProject(selector)` 按需订阅、`useProjectActions` 获取操作，不逐层传递整份 store/doc。
+- 用 Immer 保留未变分支引用；字形、节点、笔画按 ID 派生，不重复存储。共享节点引用须有效，锁定保护几何和连接关系。
+- 连续拖拽、滑块、改名使用事务，每次只记一条历史；控件复用 `useEditTransaction`，手稿滑块用 `TransactionalRange`。指针只结束自身事务，过期 token 禁止写入；分支实际移动后才创建，回源点时移除。
+- 历史保留 60 步，新提交清空重做，取消或无变化不记历史。选择、工具、原图显示属于会话，不进入历史或保存。
+- 撤销重做、字符或选择目标切换须结束旧事务并清理失效选择；撤销优先保留当前仍存在的字符。事务内选中新建节点须传入所属 token。
+- 笔锋统一存于 `Project.brush`，通过 `changeGlobalBrush` 修改。画布、缩略图、导出共用配置，笔画锁定不阻止全局笔锋修改。
+
+### 保存与数据
+
+- `projectAutosave` 只订阅已提交手稿，采用三秒节流：窗口内合并最新修改，后续提交不推迟计时；请求期间的新提交仍遵循三秒窗口。隐藏页面或 Ctrl+S 时先提交事务再立即 flush。
+- 保留重试、离页保护和过期响应检查；并发 flush 共享保存结果，`projectStorage` 负责串行队列和 revision。失败提示持续到保存成功，撤销回旧快照不能视为已保存。
+- 先从 `/api/project` 加载再挂载编辑器；读取失败禁止用示例覆盖，文件不存在时才创建初始手稿，不读取浏览器手稿存储。
+- 软件尚未发布，仅支持当前数据结构，不增加历史格式迁移或兼容分支；格式变更同步调整类型、校验和测试。`Project` 不包含名称字段，字符与笔画名称仍保留。
+- 首次创建文件使用 PUT；后续基于已确认快照生成 PATCH，按字符与笔画 ID 定位、独立提交顺序，仅发送变化字段，未变化原图不得重传；无变化不请求。响应不明确时保留同一请求及 requestId，先确认基线，再保存后续修改；409 后停止覆盖。
+- 服务端串行校验 revision；仅同一请求、相同内容且磁盘仍为该次结果时确认重复 PATCH。合并后校验完整手稿和 64 MB 上限，再原子落盘。
+- 手稿写入 `data/project.json`，保留版本比较、串行写入、临时文件替换及 `project.backup.json`。常规界面导出 SVG/PNG，保存失败提供应急 JSON 副本。
+- 服务仅监听 `127.0.0.1`，不增加数据库或服务端运行依赖。开发数据在根目录 `data/`，发布数据在 `dist/data/`，均不入库、不随构建清理；发布路径按服务文件位置定位。
+
+### 构建与资源
+
+- 除非修改构建配置、构建脚本或打包流程，否则不要运行 build 命令；普通业务、界面、样式和文档修改不构建。
+- 构建产物为 `dist/client`、`dist/server`、`dist/runtime`、`双击运行.bat` 和根目录 `Coinage v<版本号>.zip`，运行只需包内 Node。
+- ZIP 按运行文件清单打包，仅附空 `data/`，排除手稿、备份和旧产物；失败保留上一完整 ZIP。JSZip 仅作开发依赖；Node 及 LICENSE 默认取自构建机器，可用 `COINAGE_NODE_PATH` 指定 Windows Node。
+- 资源使用可打包导入，不依赖外网；保留素材及文件名。图片只在浏览器处理，不上传；描摹放 Worker，保留 `new Worker(new URL("./trace.worker.ts", import.meta.url), { type: "module" })`；SVG 导出真实路径。

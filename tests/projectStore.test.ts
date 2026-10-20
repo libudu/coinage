@@ -14,7 +14,7 @@ function manuscript(): Project {
     c: { id: "c", x: 300, y: 300, width: 30, mode: "corner" },
   };
   glyph.strokes = [newStroke(["a", "b"], 0), newStroke(["b", "c"], 1)];
-  return { version: 1, name: "测试", glyphs: [glyph, other], activeId: glyph.id };
+  return { version: 1, glyphs: [glyph, other], activeId: glyph.id };
 }
 function setup() {
   const store = createProjectStore(manuscript());
@@ -87,22 +87,22 @@ test("empty, unchanged and round-trip gestures do not create history or clear re
   assert.equal(state().future.length, 1);
 });
 
-test("new edits including manuscript names invalidate redo; typing is one transaction", () => {
+test("new edits including glyph names invalidate redo; typing is one transaction", () => {
   const { state, actions } = setup();
   actions.update((g) => { g.color = "#123456"; });
   actions.undo();
   const id = actions.beginTransaction();
-  for (const name of ["新", "新手", "新手稿"]) actions.update((_, p) => { p.name = name; }, id);
+  for (const name of ["新", "新手", "新手稿"]) actions.update((_, p) => { p.glyphs[0].name = name; }, id);
   actions.commitTransaction(id);
   assert.equal(state().future.length, 0);
   assert.equal(state().past.length, 1);
   actions.redo();
-  assert.equal(state().project.name, "新手稿");
+  assert.equal(state().project.glyphs[0].name, "新手稿");
   actions.undo();
-  assert.equal(state().project.name, "测试");
+  assert.equal(state().project.glyphs[0].name, "甲");
 });
 
-test("session changes do not enter history; navigation survives undo and remains a v1 field", () => {
+test("session changes do not enter history and navigation survives undo", () => {
   const { state, actions } = setup();
   const otherId = state().project.glyphs[1].id;
   actions.update((g) => { g.nodes.a.x = 140; });
@@ -171,7 +171,7 @@ test("deleting nodes cleans selection and shared references, with lock protectio
   assert.equal(activeGlyph(state()).nodes.b.x, 200);
 });
 
-test("deleted glyphs, new glyphs and imported manuscripts always leave a valid active selection", () => {
+test("deleted glyphs, new glyphs and replaced manuscripts always leave a valid active selection", () => {
   const { state, actions } = setup();
   actions.select(null, null);
   actions.removeSelection();
@@ -182,11 +182,11 @@ test("deleted glyphs, new glyphs and imported manuscripts always leave a valid a
   actions.undo();
   actions.addGlyph();
   assert.equal(state().session.tool, "pen");
-  const before = state().project, imported = manuscript();
-  imported.glyphs[0].strokes[0].startTip = "horizontal";
-  actions.replace(imported);
-  assert.equal(activeGlyph(state()).strokes[0].startTip, undefined);
-  assert.equal(imported.glyphs[0].strokes[0].startTip, "horizontal");
+  const before = state().project, replacement = manuscript();
+  replacement.glyphs[0].color = "#123456";
+  actions.replace(replacement);
+  assert.deepEqual(state().project, replacement);
+  assert.notEqual(state().project, replacement);
   assert.deepEqual(state().session.nodeIds, []);
   assert.equal(state().session.tool, "select");
   actions.undo();
@@ -209,11 +209,11 @@ test("global brush edits are transactional, affect locked strokes and keep unrel
 
 test("history retains only sixty edits and stores are independent", () => {
   const { state, actions } = setup(), other = setup();
-  for (let i = 0; i < 75; i++) actions.update((_, p) => { p.name = String(i); });
+  for (let i = 0; i < 75; i++) actions.update((_, p) => { p.glyphs[0].name = String(i); });
   assert.equal(state().past.length, 60);
   for (let i = 0; i < 61; i++) actions.undo();
-  assert.equal(state().project.name, "14");
-  assert.equal(other.state().project.name, "测试");
+  assert.equal(state().project.glyphs[0].name, "14");
+  assert.equal(other.state().project.glyphs[0].name, "甲");
   assert.equal(other.state().past.length, 0);
 });
 
