@@ -25,21 +25,21 @@ export const traceOptionLimits = {
 } as const;
 
 export type ImportSettings = TraceOptions & {
-  crop: number;
+  scale: number;
   offsetX: number;
   offsetY: number;
   filenamePattern: string;
 };
 export const defaultImportSettings: ImportSettings = {
   ...defaultTrace,
-  crop: 0,
+  scale: 100,
   offsetX: 0,
   offsetY: 0,
   filenamePattern: defaultFilenamePattern,
 };
 export const importSettingLimits = {
   ...traceOptionLimits,
-  crop: { min: 0, max: 45 },
+  scale: { min: 10, max: 200 },
   offsetX: { min: -100, max: 100 },
   offsetY: { min: -100, max: 100 },
 } as const;

@@ -21,6 +21,7 @@ import { activeGlyph } from "../project/projectStore";
 import { selectionLocked } from "./nodeSelection";
 
 export function EditorCanvas({
+  stageRef,
   importFile,
   modalOpen,
   showShortcuts,
@@ -44,7 +45,8 @@ export function EditorCanvas({
     [fit, setFit] = useState(0.8),
     [space, setSpace] = useState(false),
     [dragOver, setDragOver] = useState(false);
-  const stage = useRef<HTMLDivElement>(null),
+  const internalStage = useRef<HTMLDivElement>(null),
+    stage = stageRef ?? internalStage,
     svg = useRef<SVGSVGElement>(null);
   const [viewport, setViewport] = useState({ width: 800, height: 700 });
   const stroke = glyph.strokes.find((s) => s.id === strokeId),
@@ -279,6 +281,7 @@ export function EditorCanvas({
       </div>
       <div
         ref={stage}
+        tabIndex={-1}
         className={`canvas-stage tool-${tool} ${space ? "space-pan" : ""} ${dragOver ? "drag-over" : ""} relative flex-1
           overflow-hidden min-h-0 touch-none bg-[#f0f2eb]`}
         onPointerMove={move}

@@ -150,6 +150,88 @@ async function key(key: string, ctrlKey = false) {
   });
 }
 
+test("new blank glyphs, character switches and entering the editor focus the canvas for shortcuts", async (t) => {
+  const { container } = await render(t);
+  const stage = container.querySelector<HTMLElement>(".canvas-stage")!;
+  const focusedKey = async (key: string, ctrlKey = false) => {
+    const event = new dom.window.KeyboardEvent("keydown", {
+      key,
+      ctrlKey,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      document.activeElement!.dispatchEvent(event);
+    });
+    return event;
+  };
+  const entry = button(container, "编辑 乙");
+  entry.focus();
+  await click(entry);
+  assert.equal(document.activeElement, stage);
+  assert.equal((await focusedKey("a", true)).defaultPrevented, true);
+  assert.equal(stage.querySelectorAll('[data-selected="true"]').length, 2);
+  const trigger = button(container, "新建字符");
+  trigger.focus();
+  await click(trigger);
+  await click(button(container, "新建空白字符"));
+  assert.equal(container.querySelector('[role="menu"]'), null);
+  assert.equal(document.activeElement, stage);
+  assert.equal(stage.querySelectorAll("[data-node-id]").length, 0);
+  await focusedKey("p");
+  assert.equal(stage.classList.contains("tool-pen"), true);
+  await focusedKey("v");
+  for (const name of ["𠮷", "乙"]) {
+    const card = editor(container).querySelector<HTMLButtonElement>(
+      `.glyph-card[aria-label="${name}"]`,
+    )!;
+    card.focus();
+    await click(card);
+    assert.equal(document.activeElement, stage);
+    assert.equal(stage.querySelectorAll('[data-selected="true"]').length, 0);
+    assert.equal((await focusedKey("a", true)).defaultPrevented, true);
+    assert.equal(stage.querySelectorAll('[data-selected="true"]').length, 2);
+  }
+  await click(button(container, "字库"));
+  const sameGlyph = button(container, "编辑 乙");
+  sameGlyph.focus();
+  await click(sameGlyph);
+  assert.equal(document.activeElement, stage);
+});
+
+test("library character changes and editor character menus preserve menu and form focus", async (t) => {
+  const { container } = await render(t);
+  const phrase = library(container).querySelector<HTMLInputElement>("input")!;
+  phrase.focus();
+  await contextMenu(button(container, "编辑 乙"));
+  const menu = container.querySelector('[role="menu"]')!;
+  assert.ok(menu.contains(document.activeElement));
+  await click(button(container, "编辑基本信息"));
+  const name = container.querySelector<HTMLInputElement>("dialog input")!;
+  assert.equal(document.activeElement, name);
+  await inputValue(name, "测试");
+  assert.equal(document.activeElement, name);
+  await click(button(container, "取消"));
+  assert.equal(editor(container).hidden, true);
+  await click(button(container, "造字"));
+  const card = editor(container).querySelector<HTMLElement>(
+    '.glyph-card[aria-label="𠮷"]',
+  )!;
+  card.focus();
+  await contextMenu(card);
+  assert.ok(
+    container.querySelector('[role="menu"]')!.contains(document.activeElement),
+  );
+  await click(button(container, "编辑基本信息"));
+  const dialog = container.querySelector("dialog")!;
+  assert.ok(dialog.contains(document.activeElement));
+  await click(button(container, "取消"));
+  assert.equal(
+    document.activeElement,
+    container.querySelector(".canvas-stage"),
+  );
+});
+
 test("the canvas edge menu inserts at the edge midpoint after coordinate transforms, saves and supports undo/redo", async (t) => {
   const initial = manuscript();
   const glyph = initial.glyphs[0];

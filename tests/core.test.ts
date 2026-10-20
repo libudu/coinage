@@ -16,6 +16,7 @@ import {
   makeMask,
   traceRaster,
   traceRasterWithPlacement,
+  resizeTrace,
 } from "../src/features/tracing/trace";
 import type { Raster } from "../src/features/tracing/trace";
 import type { Point, Project } from "../src/core/model";
@@ -248,6 +249,114 @@ test("discarded noise does not affect import centering", () => {
     Object.values(noisy.nodes).map(({ x, y, width }) => ({ x, y, width })),
     Object.values(clean.nodes).map(({ x, y, width }) => ({ x, y, width })),
   );
+});
+
+test("rectangular imports keep their long-side scale when the effective content is centered", () => {
+  const ink = (x: number, y: number) => x >= 15 && x < 95 && y >= 20 && y < 30;
+  const geometry = (input: Raster) =>
+    Object.values(traceRaster(input, defaultTrace, "shape").nodes).map(
+      ({ x, y, width }) => ({ x, y, width }),
+    );
+  const rectangular = geometry(raster(240, 120, ink));
+  assert.deepEqual(rectangular, geometry(raster(240, 240, ink)));
+  const span =
+    Math.max(...rectangular.map((n) => n.x)) -
+    Math.min(...rectangular.map((n) => n.x));
+  assert.ok(span > 160 && span < 220);
+});
+
+test("glyph scale changes layout and reference together while leaving stroke width independent", () => {
+  const input = raster(
+    240,
+    240,
+    (x, y) =>
+      (x >= 15 && x < 95 && y >= 20 && y < 30) ||
+      (x >= 65 && x < 125 && y >= 65 && y < 83),
+  );
+  const result = traceRasterWithPlacement(input, defaultTrace, "shape");
+  const snapshot = structuredClone(result),
+    before = Object.values(result.glyph.nodes);
+  for (const size of [10, 50, 100, 150, 200, 100]) {
+    for (const width of [1, 24, 76, 200]) {
+      const resized = resizeTrace(
+          result,
+          input,
+          width,
+          defaultBrush,
+          { x: 0, y: 0 },
+          size,
+        ),
+        nodes = Object.values(resized.glyph.nodes),
+        factor = size / 100,
+        bounds = glyphBounds(resized.glyph)!;
+      assert.equal(resized.referenceScale, factor);
+      assert.ok(Math.abs((bounds.minX + bounds.maxX) / 2 - 320) < 1e-8);
+      assert.ok(Math.abs((bounds.minY + bounds.maxY) / 2 - 320) < 1e-8);
+      nodes.forEach((node, i) => {
+        assert.equal(node.width, width);
+        assert.ok(
+          Math.abs(node.x - nodes[0].x - (before[i].x - before[0].x) * factor) <
+            1e-8,
+        );
+        assert.ok(
+          Math.abs(node.y - nodes[0].y - (before[i].y - before[0].y) * factor) <
+            1e-8,
+        );
+        // 反变换回源图后，节点仍与原始笔迹重合。
+        const x = Math.round(
+            (node.x / (640 / 240) - resized.referenceOffset.x) / factor,
+          ),
+          y = Math.round(
+            (node.y / (640 / 240) - resized.referenceOffset.y) / factor,
+          );
+        assert.equal(input.pixels[(y * input.width + x) * 4], 0);
+      });
+    }
+  }
+  assert.deepEqual(result, snapshot);
+});
+
+test("enlargement and offsets preserve relative geometry at the artboard boundary", () => {
+  const input = raster(240, 120, (x, y) => x < 235 && y >= 25 && y < 35);
+  const result = traceRasterWithPlacement(input, defaultTrace, "wide");
+  const before = Object.values(result.glyph.nodes);
+  const resized = resizeTrace(
+    result,
+    input,
+    24,
+    defaultBrush,
+    { x: 100, y: -100 },
+    200,
+  );
+  const nodes = Object.values(resized.glyph.nodes);
+  assert.ok(resized.referenceScale < 2);
+  assert.equal(nodes.length, before.length);
+  nodes.forEach((node, i) => {
+    assert.ok(node.x >= 0 && node.x <= 640 && node.y >= 0 && node.y <= 640);
+    assert.ok(
+      Math.abs(
+        node.x -
+          nodes[0].x -
+          (before[i].x - before[0].x) * resized.referenceScale,
+      ) < 1e-8,
+    );
+    assert.equal(node.width, 24);
+  });
+});
+
+test("foreground on the source edge is preserved for tracing", () => {
+  const input = raster(120, 80, (x, y) => x < 60 && y === 20);
+  assert.equal(makeMask(input, defaultTrace)[20 * 120], 1);
+  const result = traceRasterWithPlacement(
+    input,
+    { ...defaultTrace, noise: 0 },
+    "edge",
+  );
+  const sourceXs = Object.values(result.glyph.nodes).map(
+    (node) => node.x / (640 / 120) - result.referenceOffset.x,
+  );
+  assert.ok(Math.abs(Math.min(...sourceXs)) < 1e-8);
+  assert.ok(Math.abs(Math.max(...sourceXs) - 59) < 1e-8);
 });
 
 test("crossing strokes share a junction node", () => {

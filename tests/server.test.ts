@@ -90,7 +90,7 @@ test("import settings persist independently, survive server restart and reject i
   const settings = {
     ...defaultImportSettings,
     width: 73,
-    crop: 10,
+    scale: 125,
     offsetX: -40,
     offsetY: 35,
     filenamePattern: "{name*}_{desc}",
@@ -111,7 +111,7 @@ test("import settings persist independently, survive server restart and reject i
   await put(demoProject(), null);
   const manuscript = await readFile(join(dataDir, "project.json"), "utf8");
   for (const invalid of [
-    { ...settings, crop: 46 },
+    { ...settings, scale: 201 },
     { ...settings, offsetX: 101 },
     { ...settings, offsetY: -101 },
     { ...settings, width: "40" },

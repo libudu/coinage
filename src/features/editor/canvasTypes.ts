@@ -1,8 +1,10 @@
+import type { RefObject } from "react";
 import type { Point } from "../../core/model";
 import type { StrokeEdge } from "./strokeEdges";
 
 export type Tool = "select" | "pen" | "branch" | "hand";
 export type EditorCanvasProps = {
+  stageRef?: RefObject<HTMLDivElement | null>;
   importFile: (file: File) => void;
   modalOpen: boolean;
   showShortcuts: () => void;

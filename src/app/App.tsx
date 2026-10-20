@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Glyph, Point, Project } from "../core/model";
 import { ToastProvider, useToast } from "../shared/components/Toast";
 import { ShortcutsDialog } from "../features/editor/ShortcutsDialog";
@@ -63,6 +63,7 @@ function ProjectSaveError({ exportProject }: { exportProject: () => void }) {
 
 function Workspace() {
   const [page, setPage] = useState<WorkspacePage>("library");
+  const activeGlyphId = useProject((s) => s.project.activeId);
   const [contextMenu, setContextMenu] = useState<
     (Point & { edge?: StrokeEdge }) | null
   >(null);
@@ -87,6 +88,8 @@ function Workspace() {
   const toast = useToast();
   const [shortcuts, setShortcuts] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const editorStage = useRef<HTMLDivElement>(null);
+  const focusedEditorGlyph = useRef<string | null>(null);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const openContextMenu = (
     position: Point,
@@ -113,6 +116,16 @@ function Workspace() {
     !!deletingGlyph ||
     !!contextMenu ||
     shortcuts;
+  useEffect(() => {
+    if (page !== "editor") {
+      focusedEditorGlyph.current = null;
+      return;
+    }
+    if (editorBlocked || focusedEditorGlyph.current === activeGlyphId) return;
+    focusedEditorGlyph.current = activeGlyphId;
+    // 字符切换后等菜单、弹窗关闭并恢复入口焦点，再聚焦编辑画布。
+    editorStage.current?.focus({ preventScroll: true });
+  }, [activeGlyphId, page, editorBlocked]);
   const { remove, duplicate } = useEditorCommands({
     blocked: editorBlocked,
     showShortcuts: () => setShortcuts(true),
@@ -172,6 +185,7 @@ function Workspace() {
             importGlyph={upload}
           />
           <EditorCanvas
+            stageRef={editorStage}
             openContextMenu={openContextMenu}
             showShortcuts={() => setShortcuts(true)}
             importFile={importFile}

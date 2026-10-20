@@ -5,6 +5,7 @@ import { emptyGlyph, newStroke, uid } from "../../core/model";
 import type { Glyph, Point } from "../../core/model";
 import {
   defaultImportSettings,
+  importSettingLimits,
   traceOptionLimits,
 } from "../../core/importSettings";
 import type { TraceOptions } from "../../core/importSettings";
@@ -29,15 +30,6 @@ export function makeMask(raster: Raster, options: TraceOptions) {
         : brightness > 255 - options.threshold)
         ? 1
         : 0;
-  }
-  // 将边界留空，使邻域运算的结果保持确定。
-  for (let x = 0; x < width; x++) {
-    mask[x] = 0;
-    mask[(height - 1) * width + x] = 0;
-  }
-  for (let y = 0; y < height; y++) {
-    mask[y * width] = 0;
-    mask[y * width + width - 1] = 0;
   }
   return mask;
 }
@@ -187,12 +179,20 @@ export function traceRasterWithPlacement(
   name: string,
   brush: BrushDefaults = defaultBrush,
 ): { glyph: Glyph; referenceOffset: Point } {
-  const { width: w, height: h } = raster,
-    mask = makeMask(raster, options);
+  // 在图外补空边供邻域运算使用，保留紧贴图片边缘的笔迹。
+  const w = raster.width + 2,
+    h = raster.height + 2,
+    sourceMask = makeMask(raster, options),
+    mask = new Uint8Array(w * h);
+  for (let y = 0; y < raster.height; y++)
+    mask.set(
+      sourceMask.subarray(y * raster.width, (y + 1) * raster.width),
+      (y + 1) * w + 1,
+    );
   filterNoise(mask, w, h, options.noise);
   if (!mask.some(Boolean))
     throw new Error("没有检测到笔画，请调整阈值或前景颜色。");
-  if (mask.reduce((sum, b) => sum + b, 0) > mask.length * 0.85)
+  if (mask.reduce((sum, b) => sum + b, 0) > sourceMask.length * 0.85)
     throw new Error("前景覆盖过大，请切换前景颜色或降低阈值。");
   const widths = distanceField(mask, w, h),
     skeleton = skeletonize(mask, w, h);
@@ -224,9 +224,9 @@ export function traceRasterWithPlacement(
   const adjacent = new Map(pixels.map((p) => [p, neighbors(p)])),
     vertex = new Map<number, string>(),
     g = emptyGlyph(name);
-  const scale = 640 / Math.max(w, h),
-    ox = (640 - w * scale) / 2,
-    oy = (640 - h * scale) / 2;
+  const scale = 640 / Math.max(raster.width, raster.height),
+    ox = (640 - raster.width * scale) / 2 - scale,
+    oy = (640 - raster.height * scale) / 2 - scale;
   const createNode = (p: number) => {
     const id = uid();
     g.nodes[id] = {
@@ -367,14 +367,29 @@ function centerTraceGlyph(
   };
 }
 
-// 粗细不影响骨架，直接复用识别结果并重新对齐轮廓与原图。
+// 缩放只改变节点布局，粗细独立设置；复用骨架并同步原图变换。
 export function resizeTrace(
   result: { glyph: Glyph; referenceOffset: Point },
   raster: Pick<Raster, "width" | "height">,
   width: number,
   brush: BrushDefaults = defaultBrush,
   offset: Point = { x: 0, y: 0 },
+  size = defaultImportSettings.scale,
 ) {
+  const originalNodes = Object.values(result.glyph.nodes),
+    xs = originalNodes.map((node) => node.x),
+    ys = originalNodes.map((node) => node.y),
+    side = Math.max(raster.width, raster.height),
+    scale = 640 / side,
+    factor = Math.min(
+      clamp(
+        size,
+        importSettingLimits.scale.min,
+        importSettingLimits.scale.max,
+      ) / 100,
+      640 / (Math.max(...xs) - Math.min(...xs) || 1),
+      640 / (Math.max(...ys) - Math.min(...ys) || 1),
+    );
   const glyph = {
     ...result.glyph,
     nodes: Object.fromEntries(
@@ -382,6 +397,8 @@ export function resizeTrace(
         id,
         {
           ...node,
+          x: 320 + (node.x - 320) * factor,
+          y: 320 + (node.y - 320) * factor,
           width: clamp(
             width,
             traceOptionLimits.width.min,
@@ -391,12 +408,10 @@ export function resizeTrace(
       ]),
     ),
   };
-  const centered = centerTraceGlyph(
-    glyph,
-    640 / Math.max(raster.width, raster.height),
-    brush,
-    result.referenceOffset,
-  );
+  const centered = centerTraceGlyph(glyph, scale, brush, {
+    x: result.referenceOffset.x * factor + (side / 2) * (1 - factor),
+    y: result.referenceOffset.y * factor + (side / 2) * (1 - factor),
+  });
   const nodes = Object.values(glyph.nodes);
   const dx = clamp(
       offset.x,
@@ -412,10 +427,9 @@ export function resizeTrace(
     node.x += dx;
     node.y += dy;
   });
-  const scale = 640 / Math.max(raster.width, raster.height);
   centered.referenceOffset.x += dx / scale;
   centered.referenceOffset.y += dy / scale;
-  return centered;
+  return { ...centered, referenceScale: factor };
 }
 
 export async function readImage(src: string): Promise<HTMLImageElement> {
@@ -428,18 +442,16 @@ export async function readImage(src: string): Promise<HTMLImageElement> {
 }
 export async function rasterize(
   src: string,
-  crop = defaultImportSettings.crop,
 ): Promise<{ raster: Raster; reference: string }> {
   const img = await readImage(src),
     canvas = document.createElement("canvas");
   canvas.width = canvas.height = 420;
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!,
-    side =
-      Math.max(img.naturalWidth, img.naturalHeight) * (1 - (crop * 2) / 100),
-    sx = (img.naturalWidth - side) / 2,
-    sy = (img.naturalHeight - side) / 2;
-  // 以补齐短边后的正方形向内裁剪，0 时保留完整原图。
-  ctx.drawImage(img, sx, sy, side, side, 30, 30, 360, 360);
+    scale = 420 / Math.max(img.naturalWidth, img.naturalHeight),
+    width = img.naturalWidth * scale,
+    height = img.naturalHeight * scale;
+  // 长边适配字格，短边居中补空白，不裁剪或额外缩小原图。
+  ctx.drawImage(img, (420 - width) / 2, (420 - height) / 2, width, height);
   return {
     raster: {
       pixels: ctx.getImageData(0, 0, 420, 420).data,

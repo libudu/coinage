@@ -16,6 +16,7 @@ import { glyphBounds, glyphPath } from "../src/core/geometry";
 import { isProject } from "../src/core/validation";
 import {
   rasterize,
+  resizeTrace,
   traceRasterWithPlacement,
 } from "../src/features/tracing/trace";
 import type { Raster } from "../src/features/tracing/trace";
@@ -68,6 +69,11 @@ Object.assign(globalThis, {
   localStorage: dom.window.localStorage,
   IS_REACT_ACT_ENVIRONMENT: true,
   Worker: TestWorker,
+  FileReader: dom.window.FileReader,
+  ResizeObserver: class {
+    observe() {}
+    disconnect() {}
+  },
   Image: class {
     naturalWidth = sourceSize.width;
     naturalHeight = sourceSize.height;
@@ -109,6 +115,7 @@ Object.assign(dom.window.HTMLCanvasElement.prototype, {
 });
 const { createRoot } = await import("react-dom/client");
 const { ImportDialog } = await import("../src/features/tracing/ImportDialog");
+const { default: App } = await import("../src/app/App");
 const { GlyphSidebar } = await import("../src/features/editor/GlyphSidebar");
 const { ProjectProvider, useProjectApi } =
   await import("../src/features/project/useProject");
@@ -290,27 +297,24 @@ test("unmatched, invalid and blank filename templates show exactly the fallback 
   assert.equal(workers.length, 1);
 });
 
-test("square cropping uses one centered region and preserves the complete rectangular source at zero", async (t) => {
+test("rasterization fits the whole source by its long side without cropping or extra margins", async (t) => {
   const previous = { ...sourceSize };
   t.after(() => Object.assign(sourceSize, previous));
   for (const [width, height] of [
     [420, 210],
     [210, 420],
+    [840, 420],
+    [210, 210],
   ]) {
     Object.assign(sourceSize, { width, height });
-    for (const crop of [0, 10, 45]) {
-      await rasterize("data:image/png;base64,AA==", crop);
-      const [x, y, w, h, dx, dy, dw, dh] = imageDraws.at(-1)!;
-      assert.equal(w, h);
-      assert.equal(w, 420 * (1 - (crop * 2) / 100));
-      assert.equal(x + w / 2, width / 2);
-      assert.equal(y + h / 2, height / 2);
-      assert.deepEqual([dx, dy, dw, dh], [30, 30, 360, 360]);
-      if (crop === 0) {
-        assert.ok(x <= 0 && y <= 0);
-        assert.ok(x + w >= width && y + h >= height);
-      }
-    }
+    await rasterize("data:image/png;base64,AA==");
+    const [dx, dy, dw, dh] = imageDraws.at(-1)!;
+    assert.equal(imageDraws.at(-1)!.length, 4);
+    assert.equal(Math.max(dw, dh), 420);
+    assert.equal(dw / dh, width / height);
+    assert.equal(dx + dw / 2, 210);
+    assert.equal(dy + dh / 2, 210);
+    assert.ok(dx >= 0 && dy >= 0);
   }
 });
 
@@ -322,10 +326,11 @@ test("dragging import width updates the contour immediately without restarting r
     "24",
   );
   assert.equal(container.querySelector('input[type="checkbox"]'), null);
+  assert.equal(container.querySelector('input[aria-label="边缘裁剪"]'), null);
   assert.equal(
-    container.querySelector<HTMLInputElement>('input[aria-label="边缘裁剪"]')!
+    container.querySelector<HTMLInputElement>('input[aria-label="字形缩放"]')!
       .value,
-    "0",
+    "100",
   );
   assert.ok(!container.textContent!.includes("只提取彩色"));
   const original = path();
@@ -377,11 +382,12 @@ test("dragging import width updates the contour immediately without restarting r
   assert.equal(workers.length, 1);
 });
 
-test("width changes during pending recognition keep its worker and use the latest width on completion", async (t) => {
+test("scale and width changes during pending recognition keep its worker and use the latest values on completion", async (t) => {
   const { container, busy, confirm, imported } = await render(t);
   await tick(t);
   const worker = workers[0];
   await input(container, "笔画粗细", 112);
+  await input(container, "字形缩放", 150);
   await tick(t);
   assert.equal(workers.length, 1);
   assert.equal(worker.terminated, false);
@@ -393,6 +399,28 @@ test("width changes during pending recognition keep its worker and use the lates
   assert.ok(
     Object.values(imported[0].nodes).every((node) => node.width === 112),
   );
+  const request = worker.request,
+    traced = traceRasterWithPlacement(
+      request.raster,
+      request.options,
+      request.name,
+      brush,
+    ),
+    expected = resizeTrace(
+      traced,
+      request.raster,
+      112,
+      brush,
+      { x: 0, y: 0 },
+      150,
+    );
+  assert.equal(glyphPath(imported[0], brush), glyphPath(expected.glyph, brush));
+  assert.equal(
+    Number(
+      container.querySelector(".trace-preview image")!.getAttribute("width"),
+    ),
+    960,
+  );
 });
 
 test("restore defaults resets every import setting, refreshes recognition and persists the defaults for reopening", async (t) => {
@@ -402,7 +430,7 @@ test("restore defaults resets every import setting, refreshes recognition and pe
     noise: 35,
     polarity: "light",
     width: 75,
-    crop: 15,
+    scale: 150,
     offsetX: -45,
     offsetY: 60,
     filenamePattern: "{name}_{desc}",
@@ -428,7 +456,7 @@ test("restore defaults resets every import setting, refreshes recognition and pe
     ["路径简化", "simplify"],
     ["去除杂点", "noise"],
     ["笔画粗细", "width"],
-    ["边缘裁剪", "crop"],
+    ["字形缩放", "scale"],
     ["X 偏移", "offsetX"],
     ["Y 偏移", "offsetY"],
   ] as const)
@@ -483,18 +511,20 @@ test("recognition settings still retrace, reject obsolete results and preserve l
   );
 });
 
-test("import shares the editor grid, crops the source, shifts artwork and reference live, and remembers backend settings", async (t) => {
+test("import shares the editor grid, scales artwork independently of width, shifts artwork and reference live, and remembers backend settings", async (t) => {
   const settings = {
     ...defaultImportSettings,
-    crop: 10,
+    scale: 100,
   };
   const { container, root, props, backend, busy, confirm, imported, path } =
     await render(t, settings);
   assert.ok(container.querySelector("[data-artboard-grid]"));
   assert.equal(container.querySelectorAll('input[type="number"]').length, 0);
-  const cropSlider = container.querySelectorAll('input[aria-label="边缘裁剪"]');
-  assert.equal(cropSlider.length, 1);
-  assert.equal((cropSlider[0] as HTMLInputElement).type, "range");
+  const scaleSlider = container.querySelectorAll(
+    'input[aria-label="字形缩放"]',
+  );
+  assert.equal(scaleSlider.length, 1);
+  assert.equal((scaleSlider[0] as HTMLInputElement).type, "range");
   for (const label of ["X 偏移", "Y 偏移"]) {
     const slider = container.querySelector<HTMLInputElement>(
       `input[aria-label="${label}"]`,
@@ -503,7 +533,7 @@ test("import shares the editor grid, crops the source, shifts artwork and refere
     assert.equal(slider.min, "-100");
     assert.equal(slider.max, "100");
   }
-  assert.deepEqual(imageDraws[0].slice(0, 4), [42, 42, 336, 336]);
+  assert.deepEqual(imageDraws[0], [0, 0, 420, 420]);
   assert.equal(backend.saves, 0);
   await tick(t);
   await act(async () => workers[0].reply());
@@ -535,22 +565,29 @@ test("import shares the editor grid, crops the source, shifts artwork and refere
     }),
     true,
   );
-  await input(container, "边缘裁剪", 12);
-  assert.equal(busy(), "true");
-  assert.equal(confirm().disabled, true);
+  await input(container, "字形缩放", 125);
+  assert.equal(busy(), "false");
+  assert.equal(confirm().disabled, false);
   await tick(t);
-  assert.equal(workers.length, 2);
-  await act(async () => workers[1].reply());
+  assert.equal(workers.length, 1);
+  const enlargedPath = path();
+  await act(async () => confirm().click());
+  assert.equal(glyphPath(imported.at(-1)!, brush), enlargedPath);
+  assert.ok(
+    Object.values(imported.at(-1)!.nodes).every((node) => node.width === 24),
+  );
+  assert.equal(Number(reference.getAttribute("width")), 800);
+  assert.deepEqual(imageDraws.at(-1)!.slice(2), [525, 525]);
   assert.deepEqual(backend.settings, {
     ...settings,
-    crop: 12,
+    scale: 125,
     offsetX: 45,
     offsetY: -30,
   });
   await act(async () => root.render(null));
   await act(async () => root.render(h(ImportDialog, props)));
   for (const [label, value] of [
-    ["边缘裁剪", 12],
+    ["字形缩放", 125],
     ["X 偏移", 45],
     ["Y 偏移", -30],
   ] as const) {
@@ -604,7 +641,7 @@ test("failed settings reads never overwrite backend defaults and retry restores 
   assert.equal(backend.saves, 0);
 });
 
-test("failed backend saves expose a retry that persists the latest crop and offset values", async (t) => {
+test("failed backend saves expose a retry that persists the latest scale and offset values", async (t) => {
   const { container } = await ready(t);
   let fail = true;
   const saves: ImportSettings[] = [];
@@ -617,7 +654,7 @@ test("failed backend saves expose a retry that persists the latest crop and offs
       return new Response("{}", { status: fail ? 500 : 200 });
     },
   );
-  await input(container, "边缘裁剪", 14);
+  await input(container, "字形缩放", 140);
   await input(container, "X 偏移", 26);
   assert.match(
     container.querySelector('[role="alert"]')!.textContent!,
@@ -630,8 +667,125 @@ test("failed backend saves expose a retry that persists the latest crop and offs
       .click(),
   );
   assert.equal(container.querySelector('[role="alert"]'), null);
-  assert.equal(saves.at(-1)!.crop, 14);
+  assert.equal(saves.at(-1)!.scale, 140);
   assert.equal(saves.at(-1)!.offsetX, 26);
+});
+
+test("successful file and drop imports focus the canvas for immediate node selection while cancellation restores the trigger", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  workers.length = 0;
+  localStorage.clear();
+  t.mock.method(projectStorage, "save", async () => {});
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () => new Response(JSON.stringify(defaultImportSettings)),
+  );
+  t.mock.method(
+    dom.window.FileReader.prototype,
+    "readAsDataURL",
+    function (this: FileReader) {
+      Object.defineProperty(this, "result", {
+        value: "data:image/png;base64,AA==",
+        configurable: true,
+      });
+      this.onload?.(
+        new dom.window.ProgressEvent("load") as ProgressEvent<FileReader>,
+      );
+    },
+  );
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container),
+    glyph = emptyGlyph("原字符");
+  await act(async () =>
+    root.render(
+      h(App, {
+        initialProject: {
+          version: 1,
+          activeId: glyph.id,
+          glyphs: [glyph],
+          brush,
+        },
+      }),
+    ),
+  );
+  t.after(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const button = (label: string) => {
+    const target = [...container.querySelectorAll("button")].find(
+      (item) =>
+        item.getAttribute("aria-label") === label ||
+        item.textContent?.trim() === label,
+    );
+    assert.ok(target, label);
+    return target;
+  };
+  await act(async () => button("造字").click());
+  const stage = container.querySelector<HTMLElement>(".canvas-stage")!;
+  const trigger = button("新建字符");
+  const open = async (method: "file" | "drop") => {
+    trigger.focus();
+    const file = new dom.window.File(["image"], "导入.png", {
+      type: "image/png",
+    });
+    await act(async () => {
+      if (method === "file") {
+        const input =
+          container.querySelector<HTMLInputElement>('input[type="file"]')!;
+        Object.defineProperty(input, "files", {
+          value: [file],
+          configurable: true,
+        });
+        input.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+      } else {
+        const event = new dom.window.Event("drop", {
+          bubbles: true,
+          cancelable: true,
+        });
+        Object.defineProperty(event, "dataTransfer", {
+          value: { files: [file] },
+        });
+        stage.dispatchEvent(event);
+      }
+    });
+    assert.ok(container.querySelector("dialog"));
+  };
+  for (const method of ["file", "drop"] as const) {
+    await open(method);
+    await act(async () => button("取消").click());
+    assert.equal(container.querySelector("dialog"), null);
+    assert.equal(document.activeElement, trigger);
+    await open(method);
+    await tick(t);
+    await act(async () => workers.at(-1)!.reply());
+    const confirm = container.querySelector<HTMLButtonElement>(
+      ".modal-footer button:last-child",
+    )!;
+    assert.equal(confirm.disabled, false);
+    await act(async () => confirm.click());
+    assert.equal(container.querySelector("dialog"), null);
+    assert.equal(document.activeElement, stage);
+    const nodes = stage.querySelectorAll("[data-node-id]");
+    assert.ok(nodes.length > 0);
+    assert.equal(stage.querySelectorAll('[data-selected="true"]').length, 0);
+    const event = new dom.window.KeyboardEvent("keydown", {
+      key: "a",
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => {
+      document.activeElement!.dispatchEvent(event);
+    });
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(
+      stage.querySelectorAll('[data-selected="true"]').length,
+      nodes.length,
+    );
+  }
 });
 
 test("new blank and imported glyphs scroll only the character list to reveal their selected cards", async (t) => {

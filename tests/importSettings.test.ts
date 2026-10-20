@@ -13,7 +13,7 @@ import {
 
 test("import settings validate every numeric limit and reject incomplete or untrusted fields", () => {
   assert.equal(defaultImportSettings.width, 24);
-  assert.equal(defaultImportSettings.crop, 0);
+  assert.equal(defaultImportSettings.scale, 100);
   assert.equal(defaultImportSettings.filenamePattern, "{desc*}_{name}");
   for (const pattern of [
     "",

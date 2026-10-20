@@ -26,7 +26,7 @@ import { createTraceWorker } from "./createTraceWorker";
 import { loadImportSettings, saveImportSettings } from "./traceSettings";
 import { Icon } from "../../shared/components/Icon";
 
-function alignedReference(raster: Raster, offset: Point) {
+function alignedReference(raster: Raster, offset: Point, scale: number) {
   const source = document.createElement("canvas"),
     target = document.createElement("canvas");
   source.width = target.width = raster.width;
@@ -35,7 +35,15 @@ function alignedReference(raster: Raster, offset: Point) {
     data = ctx.createImageData(raster.width, raster.height);
   data.data.set(raster.pixels);
   ctx.putImageData(data, 0, 0);
-  target.getContext("2d")!.drawImage(source, offset.x, offset.y);
+  target
+    .getContext("2d")!
+    .drawImage(
+      source,
+      offset.x,
+      offset.y,
+      raster.width * scale,
+      raster.height * scale,
+    );
   return target.toDataURL("image/png");
 }
 
@@ -121,11 +129,25 @@ export function ImportDialog({
   const resizedPreview = useMemo(
     () =>
       preview &&
-      resizeTrace(preview, preview.raster, options.width, brush, {
-        x: options.offsetX,
-        y: options.offsetY,
-      }),
-    [preview, options.width, options.offsetX, options.offsetY, brush],
+      resizeTrace(
+        preview,
+        preview.raster,
+        options.width,
+        brush,
+        {
+          x: options.offsetX,
+          y: options.offsetY,
+        },
+        options.scale,
+      ),
+    [
+      preview,
+      options.width,
+      options.scale,
+      options.offsetX,
+      options.offsetY,
+      brush,
+    ],
   );
   useEffect(() => {
     if (!settingsReady) return;
@@ -134,7 +156,7 @@ export function ImportDialog({
     setPreview(null);
     setBusy(true);
     setError("");
-    rasterize(source.src, options.crop)
+    rasterize(source.src)
       .then((data) => {
         if (alive) {
           setRaster(data.raster);
@@ -150,7 +172,7 @@ export function ImportDialog({
     return () => {
       alive = false;
     };
-  }, [source, settingsReady, options.crop]);
+  }, [source, settingsReady]);
   useEffect(() => {
     if (!raster) return;
     setBusy(true);
@@ -207,7 +229,11 @@ export function ImportDialog({
       ...resizedPreview.glyph,
       name: filenameInfo.name,
       description: filenameInfo.description,
-      reference: alignedReference(raster, resizedPreview.referenceOffset),
+      reference: alignedReference(
+        raster,
+        resizedPreview.referenceOffset,
+        resizedPreview.referenceScale,
+      ),
     });
   };
   return (
@@ -254,8 +280,8 @@ export function ImportDialog({
                 {resizedPreview && reference && (
                   <image
                     href={reference}
-                    width="640"
-                    height="640"
+                    width={640 * resizedPreview.referenceScale}
+                    height={640 * resizedPreview.referenceScale}
                     x={
                       (resizedPreview.referenceOffset.x * 640) /
                       Math.max(preview!.raster.width, preview!.raster.height)
@@ -438,22 +464,22 @@ export function ImportDialog({
             />
             <div className="mt-[16px] border-t border-[#e4e9dc] pt-[12px]">
               <div className="flex items-center justify-between text-[12px] text-[#88967a]">
-                <span>边缘裁剪</span>
+                <span>字形缩放</span>
                 <span className="font-mono text-[#5a7446]">
-                  {options.crop}%
+                  {options.scale}%
                 </span>
               </div>
               <RangeInput
                 variant="row"
-                aria-label="边缘裁剪"
-                min={importSettingLimits.crop.min}
-                max={importSettingLimits.crop.max}
+                aria-label="字形缩放"
+                min={importSettingLimits.scale.min}
+                max={importSettingLimits.scale.max}
                 step={1}
-                value={options.crop}
+                value={options.scale}
                 onChange={(event) =>
                   setOptions((current) => ({
                     ...current,
-                    crop: Number(event.target.value),
+                    scale: Number(event.target.value),
                   }))
                 }
               />
