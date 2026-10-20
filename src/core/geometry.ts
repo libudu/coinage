@@ -83,8 +83,8 @@ const norm = (a: Point, b: Point) => {
 };
 const fmt = (n: number) => Math.round(n * 100) / 100;
 
-// Two visible arms sharing an endpoint form a corner, even when they belong
-// to separate strokes. Do not guess a continuation at a branching junction.
+// 共享端点的两条可见路径即使属于不同笔画，也共同构成转角。
+// 分支交汇处不推测唯一的延续方向。
 function connectedSample(
   g: Glyph,
   stroke: Stroke,
@@ -113,8 +113,8 @@ function connectedSample(
   return peer.nodes[0] === id ? adjacent[1] : adjacent[adjacent.length - 2];
 }
 
-// Every shared endpoint is occupied, including T/cross junctions where
-// connectedSample deliberately cannot choose a single continuation.
+// 所有共享端点均视为已占用，包括 connectedSample 不选择唯一延续方向的
+// T 形或十字交汇处。
 export function tipIsConnected(g: Glyph, stroke: Stroke, end: "start" | "end") {
   const id =
     end === "start" ? stroke.nodes[0] : stroke.nodes[stroke.nodes.length - 1];
@@ -266,7 +266,7 @@ export function glyphBounds(g: Glyph, defaults?: BrushDefaults) {
   }
   return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
 }
-// Fill connected outlines together so antialiasing cannot expose their seams.
+// 将相连轮廓合并填充，避免抗锯齿使连接处露出细缝。
 export function glyphPath(g: Glyph, defaults?: BrushDefaults): string {
   return g.strokes
     .filter((s) => s.visible)

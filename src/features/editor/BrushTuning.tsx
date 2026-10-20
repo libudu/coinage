@@ -1,17 +1,13 @@
-import { RangeInput } from "../../shared/components/RangeInput";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { brushSettingLimits, changeGlobalBrush, defaultBrush, defaultBrushSettings } from "../../core/brush";
+import { TransactionalRange } from "./TransactionalRange";
+import { useState } from "react";
+import { brushSettingLimits, defaultBrush, defaultBrushSettings } from "../../core/brush";
 import type { BrushSettings } from "../../core/brush";
 import { clamp } from "../../core/geometry";
-import type { Project } from "../../core/model";
-import type { useProject } from "../project/useProject";
+import { useProject, useProjectActions, useProjectApi } from "../project/useProject";
+import type { TransactionId } from "../project/projectStore";
 
-const adjustmentKeys = new Set([
-  "ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown",
-]);
-
-// Keep a draft while typing so entering e.g. "175" is not clamped to 25
-// after the first digit. Commit on Enter/blur, or discard with Escape.
+// 输入时保留草稿，避免键入“175”时，第一个数字就被限制为最小值 25。
+// 按 Enter 或失焦时提交，按 Escape 时丢弃草稿。
 function BrushValue({ label, value, min, max, disabled, change }: {
   label: string;
   value: number;
@@ -48,34 +44,18 @@ function BrushValue({ label, value, min, max, disabled, change }: {
   );
 }
 
-export function BrushTuning({ doc }: {
-  doc: ReturnType<typeof useProject>;
-}) {
-  const gesture = useRef<{ before: Project; dirty: boolean } | null>(null);
-  const pointer = useRef<number | null>(null);
-  const { current, remember, replace } = doc;
-  const finish = useCallback((cancel = false) => {
-    const pending = gesture.current;
-    gesture.current = null;
-    pointer.current = null;
-    if (!pending?.dirty) return;
-    if (cancel) replace(pending.before, false);
-    else remember(pending.before);
-  }, [remember, replace]);
-  useEffect(() => () => finish(), [finish]);
-  const begin = () => {
-    gesture.current ??= { before: current.current, dirty: false };
-  };
-  const change = (end: "startBrush" | "endBrush", values: Partial<BrushSettings>) => {
-    const project = current.current;
+export function BrushTuning() {
+  const api = useProjectApi();
+  const { changeBrush } = useProjectActions();
+  const change = (end: "startBrush" | "endBrush", values: Partial<BrushSettings>, transaction?: TransactionId) => {
+    const project = api.getState().project;
     const effective = project.brush ?? defaultBrush;
     const previous = effective[end];
     const next = { ...previous, ...values };
     if (previous.length === next.length && previous.spread === next.spread) return;
-    if (gesture.current) gesture.current.dirty = true;
-    doc.update((_, p) => changeGlobalBrush(p, { [end]: next }), !gesture.current);
+    changeBrush({ [end]: next }, transaction);
   };
-  const brush = doc.project.brush ?? defaultBrush;
+  const brush = useProject((s) => s.project.brush) ?? defaultBrush;
 
   return (
     <details className="brush-basic brush-tuning mt-[12px] [&>summary]:cursor-pointer [&>summary]:text-[#748464]
@@ -104,15 +84,9 @@ export function BrushTuning({ doc }: {
             {(["length", "spread"] as const).map((setting) => {
               const name = setting === "length" ? "长度" : "张开";
               const limits = brushSettingLimits[setting];
-              const update = (value: number) => {
+              const update = (value: number, transaction?: TransactionId) => {
                 if (!disabled && Number.isFinite(value))
-                  change(key, { [setting]: clamp(value, limits.min, limits.max) });
-              };
-              const dragTo = (input: HTMLInputElement, clientX: number) => {
-                const rect = input.getBoundingClientRect();
-                // Match the 16px thumb and keep the full 28px row draggable.
-                const fraction = clamp((clientX - rect.left - 8) / Math.max(1, rect.width - 16), 0, 1);
-                update(Math.round(limits.min + fraction * (limits.max - limits.min)));
+                  change(key, { [setting]: clamp(value, limits.min, limits.max) }, transaction);
               };
               return (
                 <div className="brush-adjustment mt-[8px] [&_input:disabled]:opacity-[0.4]" key={setting}>
@@ -126,43 +100,9 @@ export function BrushTuning({ doc }: {
                       <span>%</span>
                     </label>
                   </div>
-                  <RangeInput variant="row" aria-label={`${label}${name}`}
+                  <TransactionalRange variant="row" aria-label={`${label}${name}`}
                     min={limits.min} max={limits.max} step={1}
-                    value={settings[setting]} disabled={disabled}
-                    onPointerDown={(e) => {
-                      if (e.button !== 0) return;
-                      e.preventDefault();
-                      e.currentTarget.focus();
-                      begin();
-                      pointer.current = e.pointerId;
-                      e.currentTarget.setPointerCapture(e.pointerId);
-                      dragTo(e.currentTarget, e.clientX);
-                    }}
-                    onPointerMove={(e) => {
-                      if (pointer.current === e.pointerId) dragTo(e.currentTarget, e.clientX);
-                    }}
-                    onChange={(e) => update(e.target.valueAsNumber)}
-                    onPointerUp={(e) => {
-                      if (pointer.current !== e.pointerId) return;
-                      dragTo(e.currentTarget, e.clientX);
-                      finish();
-                      if (e.currentTarget.hasPointerCapture(e.pointerId))
-                        e.currentTarget.releasePointerCapture(e.pointerId);
-                    }}
-                    onPointerCancel={() => finish(true)}
-                    onLostPointerCapture={() => finish()}
-                    onBlur={() => finish()}
-                    onKeyDown={(e) => {
-                      if (adjustmentKeys.has(e.key)) begin();
-                      else if (e.key === "Escape" && gesture.current) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        finish(true);
-                      }
-                    }}
-                    onKeyUp={(e) => {
-                      if (adjustmentKeys.has(e.key)) finish();
-                    }} />
+                    value={settings[setting]} disabled={disabled} onValueChange={update} />
                 </div>
               );
             })}

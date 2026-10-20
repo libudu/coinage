@@ -14,7 +14,7 @@ export const defaultBrush: BrushDefaults = {
   startBrush: { ...defaultBrushSettings }, endBrush: { ...defaultBrushSettings },
 };
 
-// Accept older v1 files, but discard endpoint overrides on load/import.
+// 兼容旧版 v1 手稿，在加载或导入时清除端点的局部覆盖配置。
 export function migrateProjectBrush(project: Project): Project {
   for (const glyph of project.glyphs)
     for (const stroke of glyph.strokes) {
@@ -27,7 +27,8 @@ export function migrateProjectBrush(project: Project): Project {
 }
 
 export function changeGlobalBrush(project: Project, patch: Partial<BrushDefaults>) {
-  project.brush = structuredClone({ ...(project.brush ?? defaultBrush), ...patch });
+  const brush = { ...(project.brush ?? defaultBrush), ...patch };
+  project.brush = { ...brush, startBrush: { ...brush.startBrush }, endBrush: { ...brush.endBrush } };
 }
 
 export function isBrushDefaults(value: unknown): value is BrushDefaults {
@@ -72,11 +73,9 @@ export type BrushSample = Point & {
   brushSkew?: number;
 };
 
-// The reference PNGs have a roughly 1.35× flared end, a 0.3× width
-// diagonal cut, and a shoulder about 1.2 widths long. Keep these in local
-// path coordinates so both ends follow curves and scale with stroke width.
-// Add shoulder samples even to a straight, two-node stroke; otherwise the
-// flare would stretch over the entire stroke. Never mutate stored knots.
+// 参考 PNG 的端部约张开至笔宽的 1.35 倍，斜切长度约为笔宽的 0.3 倍，
+// 过渡段长度约为笔宽的 1.2 倍。使用路径局部坐标，使两端随曲线方向和笔宽变化。
+// 只有两个节点的直笔画也要补充过渡采样点，避免张开效果延伸到整条笔画；不修改手稿节点。
 export function applyBrushProfile<T extends BrushSample>(
   points: T[],
   start: BrushTip,
@@ -93,7 +92,7 @@ export function applyBrushProfile<T extends BrushSample>(
     ));
   const total = lengths[lengths.length - 1];
   const first = points[0], last = points[points.length - 1];
-  // Stop before the next knot, including a turn or a shared junction.
+  // 过渡段在下一个节点前结束，包括转折节点和共享连接点。
   const firstBoundary = points.findIndex((p, i) => i > 0 && p.boundary);
   let lastBoundary = points.length - 2;
   while (lastBoundary > 0 && !points[lastBoundary].boundary) lastBoundary--;
@@ -112,8 +111,8 @@ export function applyBrushProfile<T extends BrushSample>(
   const add = (p: T | BrushSample, at: number) => {
     const fromStart = startLength > 0 ? Math.max(0, 1 - at / startLength) : 0;
     const fromEnd = endLength > 0 ? Math.max(0, 1 - (total - at) / endLength) : 0;
-    // Length controls the shoulder's reach; spread controls its flare.
-    // Only geometric clipping reduces the flare, keeping short strokes safe.
+    // 长度控制过渡段的延伸范围，张开程度控制端部扩张。
+    // 仅在几何裁剪时减小扩张，避免短笔画轮廓异常。
     const strength = fromStart * startLength / requestedStart * startSettings.spread / 100
       + fromEnd * endLength / requestedEnd * endSettings.spread / 100;
     result.push({

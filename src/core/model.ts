@@ -17,7 +17,7 @@ export type Stroke = {
   visible: boolean;
   locked: boolean;
   cap: "butt" | "round" | "square";
-  // Legacy v1 import fields; ignored when rendering and removed during migration.
+  // 旧版 v1 手稿的导入字段；渲染时忽略，迁移时清除。
   startTip?: BrushTip | "basic";
   endTip?: BrushTip | "basic";
   startBrush?: BrushSettings;

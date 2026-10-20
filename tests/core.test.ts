@@ -11,7 +11,7 @@ import type { Raster } from "../src/features/tracing/trace";
 import type { Point, Project } from "../src/core/model";
 import { brushPresets, changeGlobalBrush, defaultBrush, migrateProjectBrush } from "../src/core/brush";
 
-// SVG's default nonzero fill rule, for checking the actual filled outline.
+// 使用 SVG 默认的非零填充规则，检查实际填充轮廓。
 function pathCoverage(path: string): (point: Point) => boolean {
   const polygons = path.split("Z").map((subpath) =>
     [...subpath.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)].map(
@@ -166,7 +166,7 @@ test("import centers the combined outline, keeps separate strokes in place and a
       const nodes = Object.values(g.nodes);
       assert.ok(Math.abs(nodes.reduce((sum, n) => sum + n.x, 0) / nodes.length - 320) > 5);
       const scale = 640 / Math.max(w, h);
-      // Undoing the reference translation returns nodes to the source image's ink.
+      // 撤回原图的平移后，节点应重新落在源图的笔迹上。
       for (const node of nodes) {
         const x = Math.round((node.x - (640 - w * scale) / 2) / scale - referenceOffset.x);
         const y = Math.round((node.y - (640 - h * scale) / 2) / scale - referenceOffset.y);
@@ -372,7 +372,7 @@ test("all eight brush presets have distinct slanted ends and a constant-width bo
     brush.endTip = preset.end;
     const path = outlinePath(g, s, brush);
     paths.add(path);
-    // Reference shape: 40px body, 54px end and a 12px diagonal cut.
+    // 参考形状：主体宽 40px，端部宽 54px，斜切长度为 12px。
     const startX = preset.start === "horizontal" ? 106 : 94;
     const endX = preset.end === "horizontal" ? 506 : 494;
     assert.ok(path.includes(preset.start === "none" ? "100,120" : `${startX},127`));

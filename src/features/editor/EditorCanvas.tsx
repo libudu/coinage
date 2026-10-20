@@ -1,5 +1,5 @@
 import "./EditorCanvas.css";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { clamp } from "../../core/geometry";
 import type { Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
@@ -7,26 +7,23 @@ import { IconButton } from "../../shared/components/controls";
 import type { EditorCanvasProps, Tool } from "./canvasTypes";
 import { GlyphArtwork } from "./GlyphArtwork";
 import { useCanvasInteraction } from "./useCanvasInteraction";
+import { useActiveGlyph, useProject, useProjectActions } from "../project/useProject";
 
 export function EditorCanvas({
-  doc,
-  glyph,
-  nodeId,
-  nodeIds,
-  strokeId,
-  select,
-  selectNodes,
-  tool,
-  setTool,
   importFile,
   toast,
-  showReference,
   modalOpen,
-  undo,
-  redo,
   showShortcuts,
   openContextMenu,
 }: EditorCanvasProps) {
+  const glyph = useActiveGlyph();
+  const nodeIds = useProject((s) => s.session.nodeIds);
+  const nodeId = nodeIds.at(-1) ?? null;
+  const strokeId = useProject((s) => s.session.strokeId);
+  const tool = useProject((s) => s.session.tool);
+  const showReference = useProject((s) => s.session.showReference);
+  const brush = useProject((s) => s.project.brush);
+  const { setTool, select } = useProjectActions();
   const [grid, setGrid] = useState(true),
     [nodesVisible, setNodesVisible] = useState(true),
     [preview, setPreview] = useState(false),
@@ -41,13 +38,6 @@ export function EditorCanvas({
   const stroke = glyph.strokes.find((s) => s.id === strokeId),
     scale = fit * zoom;
   const interaction = useCanvasInteraction({
-    doc,
-    glyph,
-    nodeIds,
-    strokeId,
-    select,
-    selectNodes,
-    tool,
     toast,
     space,
     preview,
@@ -118,6 +108,7 @@ export function EditorCanvas({
         setSpace(true);
       }
       if (e.key === "Escape") {
+        interaction.cancelDrag();
         interaction.finishPen();
         setTool("select");
         setPreview(false);
@@ -161,36 +152,7 @@ export function EditorCanvas({
       <div className="editor-topbar h-[51px] bg-[#f9faf5] border-b [border-bottom-style:solid] border-b-[var(--border)] flex
         items-center justify-between gap-[10px] py-0 px-[24px] shrink-0 laptop:py-0 laptop:px-[17px] tablet:py-0
         tablet:px-[12px] phone:py-0 phone:px-[10px]">
-        <div className="history-actions flex items-center min-w-0 gap-[3px] [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
-          tablet:[&_.icon-button]:w-[25px] compact:gap-[1px]">
-          <IconButton
-            icon="undo"
-            title="撤销 Ctrl+Z"
-            onClick={undo}
-            disabled={!doc.canUndo}
-          />
-          <IconButton
-            icon="redo"
-            title="重做 Ctrl+Shift+Z"
-            onClick={redo}
-            disabled={!doc.canRedo}
-          />
-          <div
-            className={`save-state ${doc.saved === "error" ? "error" : ""} flex items-center min-w-0 gap-[7px] ml-[10px]
-              text-[#8b9386] text-[12px] whitespace-nowrap compact:hidden [&.error]:text-[#a04c32]
-              [&.error_.save-dot]:bg-[#b76548]`}
-            role="status"
-          >
-            <span className="save-dot inline-block w-[5px] h-[5px] rounded-[50%] bg-[#8eab70] shrink-0" />
-            <span className="truncate">
-              {doc.saved === "saved"
-                ? "已保存到本机"
-                : doc.saved === "saving"
-                  ? "保存中"
-                  : doc.saveError || "本地保存失败，请导出手稿"}
-            </span>
-          </div>
-        </div>
+        <HistoryActions />
         <div className="view-actions flex gap-[5px] items-center [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
           [&_.icon-button>svg]:w-[15px] [&_.icon-button>svg]:h-[15px] tablet:gap-[1px]
           phone:[&_.mini-divider]:hidden phone:[&_.icon-button]:w-[25px]">
@@ -232,6 +194,7 @@ export function EditorCanvas({
         onPointerMove={move}
         onPointerUp={(e) => end(e)}
         onPointerCancel={(e) => end(e, true)}
+        onLostPointerCapture={(e) => end(e)}
         onPointerDown={(e) => {
           if (e.button !== 0 && e.button !== 1) return;
           if (e.target === e.currentTarget) {
@@ -368,7 +331,7 @@ export function EditorCanvas({
               strokeId={strokeId}
               tool={tool}
               showReference={showReference}
-              brush={doc.project.brush}
+              brush={brush}
               scale={scale}
               grid={grid}
               preview={preview}
@@ -417,3 +380,43 @@ export function EditorCanvas({
     </main>
   );
 }
+
+const HistoryActions = memo(function HistoryActions() {
+  const canUndo = useProject((s) => s.past.length > 0 || !!s.transaction && s.project !== s.transaction.before);
+  const canRedo = useProject((s) => s.future.length > 0 && (!s.transaction || s.project === s.transaction.before));
+  const saved = useProject((s) => s.saved);
+  const saveError = useProject((s) => s.saveError);
+  const { undo, redo } = useProjectActions();
+  return (
+    <div className="history-actions flex items-center min-w-0 gap-[3px] [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
+          tablet:[&_.icon-button]:w-[25px] compact:gap-[1px]">
+          <IconButton
+            icon="undo"
+            title="撤销 Ctrl+Z"
+            onClick={undo}
+            disabled={!canUndo}
+          />
+          <IconButton
+            icon="redo"
+            title="重做 Ctrl+Shift+Z"
+            onClick={redo}
+            disabled={!canRedo}
+          />
+          <div
+            className={`save-state ${saved === "error" ? "error" : ""} flex items-center min-w-0 gap-[7px] ml-[10px]
+              text-[#8b9386] text-[12px] whitespace-nowrap compact:hidden [&.error]:text-[#a04c32]
+              [&.error_.save-dot]:bg-[#b76548]`}
+            role="status"
+          >
+            <span className="save-dot inline-block w-[5px] h-[5px] rounded-[50%] bg-[#8eab70] shrink-0" />
+            <span className="truncate">
+              {saved === "saved"
+                ? "已保存到本机"
+                : saved === "saving"
+                  ? "保存中"
+                  : saveError || "本地保存失败，请导出手稿"}
+            </span>
+          </div>
+        </div>
+  );
+});

@@ -1,36 +1,27 @@
 import { useState } from "react";
 import { centerPath } from "../../core/geometry";
-import type { Glyph, Point } from "../../core/model";
+import type { Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
 import { segmentedStateClasses } from "../../shared/components/controls";
-import type { useProject } from "../project/useProject";
+import { useActiveGlyph, useProject, useProjectActions } from "../project/useProject";
 import { GlyphPreview } from "./GlyphPreview";
 import { AddGlyphMenu } from "./AddGlyphMenu";
 
 type Props = {
-  doc: ReturnType<typeof useProject>;
-  glyph: Glyph;
-  strokeId: string | null;
-  nodeIds: string[];
-  select: (node: string | null, stroke?: string | null) => void;
-  switchGlyph: (id: string) => void;
   openGlyphContextMenu: (id: string, position: Point) => void;
-  addGlyph: () => void;
   importGlyph: () => void;
 };
 
 export function GlyphSidebar({
-  doc,
-  glyph,
-  strokeId,
-  nodeIds,
-  select,
-  switchGlyph,
   openGlyphContextMenu,
-  addGlyph,
   importGlyph,
 }: Props) {
-  const { project, update } = doc;
+  const glyphs = useProject((s) => s.project.glyphs);
+  const brush = useProject((s) => s.project.brush);
+  const glyph = useActiveGlyph();
+  const strokeId = useProject((s) => s.session.strokeId);
+  const nodeIds = useProject((s) => s.session.nodeIds);
+  const { update, select, switchGlyph, addGlyph } = useProjectActions();
   const [compositionView, setCompositionView] = useState<"strokes" | "nodes">("strokes");
   const nodes = Object.values(glyph.nodes);
   return (
@@ -40,14 +31,14 @@ export function GlyphSidebar({
         wide:h-[68px] wide:py-0 wide:px-[25px] tablet:py-0 tablet:px-[14px] compact:py-0
         compact:h-[52px] compact:px-[5px] phone:py-0 phone:px-[3px]">
         <h3 className="m-0 whitespace-nowrap">
-          字符集{" "}<span className="text-[#a0a69b] font-normal">({project.glyphs.length})</span>
+          字符集{" "}<span className="text-[#a0a69b] font-normal">({glyphs.length})</span>
         </h3>
         <AddGlyphMenu addGlyph={addGlyph} importGlyph={importGlyph} />
       </div>
       <div className="glyph-list pt-0 px-[12px] pb-[19px] flex flex-col gap-[8px] max-h-[46%] overflow-auto shrink-0 wide:pt-0
         wide:px-[17px] wide:pb-[24px] tablet:pt-0 tablet:px-[8px] tablet:pb-[15px] compact:pt-0 compact:px-[7px]
         compact:pb-[12px] compact:gap-[8px] compact:max-h-[52%] phone:pl-[5px] phone:pr-[5px]">
-        {project.glyphs.map((g, index) => (
+        {glyphs.map((g, index) => (
           <button
             key={g.id}
             className={`glyph-card ${g.id === glyph.id ? "selected" : ""} flex items-center gap-[13px] text-left min-h-[83px]
@@ -65,7 +56,7 @@ export function GlyphSidebar({
               wide:[&_svg]:w-[60px] wide:[&_svg]:h-[60px] laptop:w-[48px] laptop:h-[52px] laptop:[&_svg]:w-[45px]
               laptop:[&_svg]:h-[45px] tablet:w-[41px] tablet:h-[45px] tablet:[&_svg]:w-[39px] tablet:[&_svg]:h-[39px]
               compact:h-[44px] compact:w-[47px]">
-              <GlyphPreview glyph={g} brush={project.brush} />
+              <GlyphPreview glyph={g} brush={brush} />
             </div>
             <span className="glyph-card-text min-w-0 flex flex-col gap-[8px] [&_strong]:text-[12px] [&_strong]:font-[550]
               [&_strong]:max-w-[95px] [&_strong]:whitespace-nowrap [&_strong]:overflow-hidden [&_strong]:text-ellipsis

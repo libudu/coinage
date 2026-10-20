@@ -2,26 +2,21 @@ import { useState } from "react";
 import { exportSvg } from "../../core/svg";
 import { isProject } from "../../core/validation";
 import { migrateProjectBrush } from "../../core/brush";
-import type { Glyph } from "../../core/model";
 import { download, safeName } from "../../shared/utils/files";
-import type { useProject } from "./useProject";
+import { useProjectActions, useProjectApi } from "./useProject";
+import { activeGlyph } from "./projectStore";
 
 type Options = {
-  doc: ReturnType<typeof useProject>;
-  glyph: Glyph;
-  clearSelection: () => void;
   closeMenu: () => void;
   toast: (message: string) => void;
 };
 
 export function useProjectFiles({
-  doc,
-  glyph,
-  clearSelection,
   closeMenu,
   toast,
 }: Options) {
-  const { project } = doc;
+  const api = useProjectApi();
+  const { replace, commitTransaction } = useProjectActions();
   const [source, setSource] = useState<{ src: string; name: string } | null>(null);
   const importFile = (file: File) => {
     if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
@@ -43,14 +38,15 @@ export function useProjectFiles({
       if (file.size > 30 * 1024 * 1024) throw new Error();
       const value: unknown = JSON.parse(await file.text());
       if (!isProject(value)) throw new Error();
-      doc.replace(migrateProjectBrush(value));
-      clearSelection();
+      replace(migrateProjectBrush(value));
       toast("手稿已打开");
     } catch {
       toast("请选择有效的造字手稿 JSON 文件");
     }
   };
   const exportProject = () => {
+    commitTransaction();
+    const { project } = api.getState();
     download(
       JSON.stringify(project, null, 2),
       `${safeName(project.name)}.coinage.json`,
@@ -60,6 +56,8 @@ export function useProjectFiles({
     toast("手稿已导出");
   };
   const saveSvg = () => {
+    commitTransaction();
+    const state = api.getState(), { project } = state, glyph = activeGlyph(state);
     download(
       exportSvg(glyph, project.brush),
       `${safeName(glyph.name)}.svg`,
@@ -69,6 +67,8 @@ export function useProjectFiles({
     toast("SVG 已导出");
   };
   const savePng = () => {
+    commitTransaction();
+    const state = api.getState(), { project } = state, glyph = activeGlyph(state);
     const url = URL.createObjectURL(
         new Blob([exportSvg(glyph, project.brush)], { type: "image/svg+xml" }),
       ),

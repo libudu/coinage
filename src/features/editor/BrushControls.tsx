@@ -1,9 +1,9 @@
-import { brushPresets, brushTips, changeGlobalBrush, defaultBrush } from "../../core/brush";
+import { brushPresets, brushTips, defaultBrush } from "../../core/brush";
 import type { BrushDefaults, BrushTip } from "../../core/brush";
 import { outlinePath } from "../../core/geometry";
 import type { Glyph, Stroke } from "../../core/model";
 import { Section, segmentedStateClasses } from "../../shared/components/controls";
-import type { useProject } from "../project/useProject";
+import { useProject, useProjectActions } from "../project/useProject";
 import { BrushTuning } from "./BrushTuning";
 
 const labels: Record<BrushTip, string> = { none: "无", horizontal: "横式", vertical: "竖式" };
@@ -27,10 +27,11 @@ function BrushPreview({ start, end }: { start: BrushTip; end: BrushTip }) {
   );
 }
 
-export function BrushControls({ doc }: { doc: ReturnType<typeof useProject> }) {
-  const brush = doc.project.brush ?? defaultBrush;
+export function BrushControls() {
+  const brush = useProject((s) => s.project.brush) ?? defaultBrush;
+  const { changeBrush } = useProjectActions();
   const change = (values: Partial<BrushDefaults>) => {
-    doc.update((_, project) => changeGlobalBrush(project, values));
+    changeBrush(values);
   };
   return (
     <Section title="全局笔锋">
@@ -80,7 +81,7 @@ export function BrushControls({ doc }: { doc: ReturnType<typeof useProject> }) {
           );
         })}
       </div>
-      <BrushTuning doc={doc} />
+      <BrushTuning />
     </Section>
   );
 }

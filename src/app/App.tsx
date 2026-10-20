@@ -1,55 +1,54 @@
 import "./App.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { emptyGlyph } from "../core/model";
 import type { Point, Project } from "../core/model";
 import { Icon } from "../shared/components/Icon";
 import { IconButton, buttonStateClasses } from "../shared/components/controls";
 import { ImportDialog } from "../features/tracing/ImportDialog";
 import { EditorCanvas } from "../features/editor/EditorCanvas";
-import type { Tool } from "../features/editor/canvasTypes";
 import { EditorContextMenu } from "../features/editor/EditorContextMenu";
 import { Properties } from "../features/editor/Properties";
-import { useProject } from "../features/project/useProject";
+import { ProjectProvider, useEditTransaction, useProject, useProjectActions, useProjectApi } from "../features/project/useProject";
+import { activeGlyph } from "../features/project/projectStore";
 import { useProjectFiles } from "../features/project/useProjectFiles";
 import { useEditorCommands } from "../features/editor/useEditorCommands";
 import { GlyphSidebar } from "../features/editor/GlyphSidebar";
 import { RenameGlyphDialog } from "../features/editor/RenameGlyphDialog";
 
 export default function App({ initialProject }: { initialProject: Project }) {
+  return <ProjectProvider initialProject={initialProject}><Workspace /></ProjectProvider>;
+}
+
+function ProjectName() {
+  const name = useProject((s) => s.project.name);
+  const { update } = useProjectActions();
+  const { begin, finish } = useEditTransaction();
+  return <input aria-label="手稿名称" value={name}
+    onFocus={() => { begin(); }}
+    onChange={(e) => { update((_, p) => { p.name = e.target.value; }, begin()); }}
+    onBlur={() => {
+      if (!name.trim()) update((_, p) => { p.name = "未命名手稿"; }, begin());
+      finish();
+    }} />;
+}
+
+function ProjectImportDialog(props: Omit<Parameters<typeof ImportDialog>[0], "brush">) {
+  const brush = useProject((s) => s.project.brush);
+  return <ImportDialog {...props} brush={brush} />;
+}
+
+function Workspace() {
   const [contextMenu, setContextMenu] = useState<Point | null>(null);
   const [renamingGlyph, setRenamingGlyph] = useState<{ id: string; name: string } | null>(null);
-  const doc = useProject(initialProject),
-    { project, update } = doc,
-    glyph =
-      project.glyphs.find((g) => g.id === project.activeId) ||
-      project.glyphs[0];
-  const [selectedNodeIds, setNodeIds] = useState<string[]>(
-      glyph.strokes[0]?.nodes[1] ? [glyph.strokes[0].nodes[1]] : [],
-    ),
-    [strokeId, setStrokeId] = useState<string | null>(
-      glyph.strokes[0]?.id || null,
-    ),
-    [tool, setTool] = useState<Tool>("select");
-  const nodeIds = selectedNodeIds.filter((id) => !!glyph.nodes[id]);
-  const nodeId = nodeIds.at(-1) ?? null;
+  const api = useProjectApi();
+  const { update, select, selectNodes, switchGlyph, addGlyph } = useProjectActions();
   const [toast, setToast] = useState(""),
     [menu, setMenu] = useState<"export" | "project" | null>(null),
-    [shortcuts, setShortcuts] = useState(false),
-    [showReference, setShowReference] = useState(false);
+    [shortcuts, setShortcuts] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null),
     projectInput = useRef<HTMLInputElement>(null);
-  const select = useCallback((n: string | null, s?: string | null) => {
-    setContextMenu(null);
-    setNodeIds(n ? [n] : []);
-    if (s !== undefined) setStrokeId(s);
-  }, []);
-  const selectNodes = useCallback((nodes: string[], s?: string | null) => {
-    setContextMenu(null);
-    setNodeIds([...new Set(nodes)]);
-    if (s !== undefined) setStrokeId(s);
-  }, []);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const openContextMenu = (position: Point, n: string | null, s: string | null) => {
+    const nodeIds = api.getState().session.nodeIds;
     if (n && nodeIds.includes(n)) selectNodes([...nodeIds.filter((id) => id !== n), n], s);
     else select(n, s);
     setMenu(null);
@@ -58,21 +57,12 @@ export default function App({ initialProject }: { initialProject: Project }) {
   const {
     source, setSource, importFile, importProject, exportProject, saveSvg, savePng,
   } = useProjectFiles({
-    doc,
-    glyph,
-    clearSelection: () => select(null, null),
     closeMenu: () => setMenu(null),
     toast: setToast,
   });
-  const { remove, duplicate, undo, redo } = useEditorCommands({
-    doc,
-    glyph,
-    nodeIds,
-    strokeId,
-    select,
-    selectNodes,
+  const { remove, duplicate } = useEditorCommands({
     toast: setToast,
-    importing: !!source,
+    importing: !!source || !!renamingGlyph || !!contextMenu,
     shortcuts,
     setShortcuts,
     closeMenu: () => setMenu(null),
@@ -90,25 +80,6 @@ export default function App({ initialProject }: { initialProject: Project }) {
     window.addEventListener("pointerdown", close);
     return () => window.removeEventListener("pointerdown", close);
   }, [menu]);
-  const switchGlyph = (id: string) => {
-    update((_, p) => {
-      p.activeId = id;
-    }, false);
-    select(null, null);
-    setShowReference(false);
-  };
-  const addGlyph = () => {
-    const g = emptyGlyph(
-      `字形 ${String(project.glyphs.length + 1).padStart(2, "0")}`,
-    );
-    update((_, p) => {
-      p.glyphs.push(g);
-      p.activeId = g.id;
-    });
-    select(null, null);
-    setTool("pen");
-    setShowReference(false);
-  };
   return (
     <div className="studio h-[100dvh] min-h-[580px] flex flex-col overflow-hidden">
       <input
@@ -155,21 +126,7 @@ export default function App({ initialProject }: { initialProject: Project }) {
           compact:gap-[3px] compact:[&>input]:w-[102px] phone:[&>input]:hidden
           phone:[&>.header-divider]:hidden phone:ml-[-6px]">
           <span className="header-divider w-[1px] h-[27px] bg-[var(--border)] mr-[6px]" />
-          <input
-            aria-label="手稿名称"
-            value={project.name}
-            onChange={(e) =>
-              update((_, p) => {
-                p.name = e.target.value;
-              }, false)
-            }
-            onBlur={() => {
-              if (!project.name.trim())
-                update((_, p) => {
-                  p.name = "未命名手稿";
-                });
-            }}
-          />
+          <ProjectName />
           <div
             className="dropdown-wrap relative"
             onPointerDown={(e) => e.stopPropagation()}
@@ -208,46 +165,20 @@ export default function App({ initialProject }: { initialProject: Project }) {
         tablet:grid-cols-[154px_minmax(280px,_1fr)_214px] compact:grid-cols-[88px_minmax(0,_1fr)] compact:relative
         phone:grid-cols-[76px_minmax(0,_1fr)]">
         <GlyphSidebar
-          doc={doc}
-          glyph={glyph}
-          strokeId={strokeId}
-          nodeIds={nodeIds}
-          select={select}
-          switchGlyph={switchGlyph}
           openGlyphContextMenu={(id, position) => {
             switchGlyph(id);
             openContextMenu(position, null, null);
           }}
-          addGlyph={addGlyph}
           importGlyph={upload}
         />
         <EditorCanvas
           openContextMenu={openContextMenu}
-          undo={undo}
-          redo={redo}
           showShortcuts={() => setShortcuts(true)}
-          doc={doc}
-          glyph={glyph}
-          nodeId={nodeId}
-          nodeIds={nodeIds}
-          strokeId={strokeId}
-          select={select}
-          selectNodes={selectNodes}
-          tool={tool}
-          setTool={setTool}
           importFile={importFile}
           toast={setToast}
-          showReference={showReference}
           modalOpen={!!source || shortcuts || !!contextMenu || !!renamingGlyph}
         />
         <Properties
-          doc={doc}
-          glyph={glyph}
-          nodeId={nodeId}
-          nodeIds={nodeIds}
-          strokeId={strokeId}
-          showReference={showReference}
-          setShowReference={setShowReference}
           exportActions={
             <div
               className="split-button dropdown-wrap flex relative [&>.button]:rounded-[6px_0_0_6px] [&>.button]:border-r
@@ -292,18 +223,14 @@ export default function App({ initialProject }: { initialProject: Project }) {
         />
         {contextMenu && (
           <EditorContextMenu
-            key={`${glyph.id}:${nodeId}:${strokeId}`}
             position={contextMenu}
             onClose={closeContextMenu}
-            doc={doc}
-            glyph={glyph}
-            nodeId={nodeId}
-            nodeIds={nodeIds}
-            strokeId={strokeId}
-            select={select}
             remove={remove}
             duplicate={duplicate}
-            renameGlyph={() => setRenamingGlyph({ id: glyph.id, name: glyph.name })}
+            renameGlyph={() => {
+              const glyph = activeGlyph(api.getState());
+              setRenamingGlyph({ id: glyph.id, name: glyph.name });
+            }}
             toast={setToast}
           />
         )}
@@ -324,19 +251,12 @@ export default function App({ initialProject }: { initialProject: Project }) {
         />
       )}
       {source && (
-        <ImportDialog
-          brush={project.brush}
+        <ProjectImportDialog
           source={source}
           onClose={() => setSource(null)}
           onImport={(g) => {
-            update((_, p) => {
-              p.glyphs.push(g);
-              p.activeId = g.id;
-            });
+            addGlyph(g);
             setSource(null);
-            select(null, g.strokes[0]?.id || null);
-            setTool("select");
-            setShowReference(false);
             setToast(`已提取 ${g.strokes.length} 条笔画`);
           }}
         />

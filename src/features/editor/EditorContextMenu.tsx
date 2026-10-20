@@ -1,19 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { clamp, distance } from "../../core/geometry";
 import { uid } from "../../core/model";
-import type { Glyph, Point } from "../../core/model";
+import type { Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
 import type { IconName } from "../../shared/components/Icon";
-import type { useProject } from "../project/useProject";
+import { useActiveGlyph, useProject, useProjectActions } from "../project/useProject";
 import { selectionLocked } from "./nodeSelection";
 
 type Props = {
-  doc: ReturnType<typeof useProject>;
-  glyph: Glyph;
-  nodeId: string | null;
-  nodeIds: string[];
-  strokeId: string | null;
-  select: (node: string | null, stroke?: string | null) => void;
   remove: () => void;
   duplicate: () => void;
   renameGlyph: () => void;
@@ -31,8 +25,13 @@ type MenuAction = {
 };
 
 export function EditorContextMenu({
-  doc, glyph, nodeId, nodeIds, strokeId, select, remove, duplicate, renameGlyph, toast, position, onClose,
+  remove, duplicate, renameGlyph, toast, position, onClose,
 }: Props) {
+  const glyph = useActiveGlyph();
+  const nodeIds = useProject((s) => s.session.nodeIds);
+  const nodeId = nodeIds.at(-1) ?? null;
+  const strokeId = useProject((s) => s.session.strokeId);
+  const { update, select } = useProjectActions();
   const menu = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(position);
   useLayoutEffect(() => {
@@ -73,7 +72,7 @@ export function EditorContextMenu({
   const transform = (kind: "flip" | "rotate") => {
     const ids = multiple ? nodeIds : stroke?.nodes;
     if (!ids?.length || selectionLocked(glyph, ids)) return;
-    doc.update((g) => {
+    update((g) => {
       const nodes = [...new Set(ids)].map((id) => g.nodes[id]),
         cx =
           (Math.min(...nodes.map((n) => n.x)) +
@@ -126,7 +125,7 @@ export function EditorContextMenu({
       toast("请把节点移动到目标节点附近（36 px 内）");
       return;
     }
-    doc.update((g) => {
+    update((g) => {
       g.strokes = g.strokes
         .map((s) => ({
           ...s,
@@ -143,7 +142,7 @@ export function EditorContextMenu({
   const disconnect = () => {
     if (!node || !stroke || locked) return;
     const id = uid();
-    doc.update((g) => {
+    update((g) => {
       g.nodes[id] = { ...g.nodes[node.id], id };
       g.strokes.find((s) => s.id === stroke.id)!.nodes = stroke.nodes.map(
         (n) => (n === node.id ? id : n),
@@ -179,7 +178,7 @@ export function EditorContextMenu({
         const copy = structuredClone(glyph);
         copy.id = uid();
         copy.name += " 副本";
-        doc.update((_, p) => {
+        update((_, p) => {
           p.glyphs.push(copy);
           p.activeId = copy.id;
         });

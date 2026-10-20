@@ -1,13 +1,16 @@
 import { centerPath, distance, outlinePath } from "../../core/geometry";
-import type { Point } from "../../core/model";
+import type { Glyph, Point } from "../../core/model";
 import type { BrushDefaults } from "../../core/brush";
-import type { EditorCanvasProps } from "./canvasTypes";
+import type { Tool } from "./canvasTypes";
 import type { useCanvasInteraction } from "./useCanvasInteraction";
 
-type Props = Pick<
-  EditorCanvasProps,
-  "glyph" | "nodeId" | "nodeIds" | "strokeId" | "tool" | "showReference"
-> & {
+type Props = {
+  glyph: Glyph;
+  nodeId: string | null;
+  nodeIds: string[];
+  strokeId: string | null;
+  tool: Tool;
+  showReference: boolean;
   brush?: BrushDefaults;
   scale: number;
   grid: boolean;

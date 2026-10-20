@@ -14,7 +14,7 @@ export function selectableNodeIds(glyph: Glyph) {
   );
 }
 
-// Use one bounded offset for the whole selection so it keeps its shape at edges.
+// 为整个选区使用统一且受边界约束的位移，保证移动到边缘时形状不变。
 export function translateNodes(
   glyph: Glyph,
   ids: readonly string[],

@@ -48,7 +48,7 @@ export function makeMask(raster: Raster, options: TraceOptions) {
         ? 1
         : 0;
   }
-  // Empty borders make neighborhood operations deterministic.
+  // 将边界留空，使邻域运算的结果保持确定。
   for (let x = 0; x < width; x++) {
     mask[x] = 0;
     mask[(height - 1) * width + x] = 0;
@@ -256,7 +256,7 @@ export function traceRasterWithPlacement(
     };
     return id;
   };
-  // Collapse adjacent junction pixels into a single shared, editable knot.
+  // 将相邻的交汇像素合并为一个共享且可编辑的节点。
   for (const p of pixels) {
     if (vertex.has(p) || adjacent.get(p)!.length === 2) continue;
     const cluster = [p],
@@ -302,7 +302,7 @@ export function traceRasterWithPlacement(
     const startId = vertex.get(start)!,
       endId = vertex.get(current)!;
     if (path.length < 3 && startId === endId) return;
-    // Skeletons of squared ends contain tiny diagonal spurs; remove those only.
+    // 方形端部的骨架可能产生细小的斜向毛刺，此处只移除这些毛刺。
     const endpoint =
       adjacent.get(start)!.length === 1 || adjacent.get(current)!.length === 1;
     if (
@@ -312,7 +312,7 @@ export function traceRasterWithPlacement(
       return;
     const xy = path.map((p) => ({ x: p % w, y: Math.floor(p / w) }));
     const indices = simplifyIndices(xy, options.simplify);
-    // Keep changes in width even on otherwise straight segments.
+    // 即使路径段为直线，也保留其中的宽度变化。
     for (let i = 5; i < path.length - 5; i += 5) {
       const nearest = indices.reduce(
         (best, n) => (Math.abs(n - i) < Math.abs(best - i) ? n : best),
@@ -336,7 +336,7 @@ export function traceRasterWithPlacement(
       if (!visited.has(edgeKey(p, q)) && vertex.get(p) !== vertex.get(q))
         walk(p, q);
     }
-  // A closed contour has no endpoints: introduce a seed and walk the full loop.
+  // 闭合轮廓没有端点，需选取一个起始点并遍历完整闭环。
   for (const p of pixels)
     for (const q of adjacent.get(p)!) {
       if (
@@ -353,7 +353,7 @@ export function traceRasterWithPlacement(
   });
   if (!g.strokes.length)
     throw new Error("没有提取到有效路径，请降低去噪强度或使用更清晰的图片。");
-  // Translate the whole outline together, including disconnected strokes.
+  // 整体平移全部轮廓，包括彼此不相连的笔画。
   const bounds = glyphBounds(g, brush)!,
     offset = {
       x: 320 - (bounds.minX + bounds.maxX) / 2,

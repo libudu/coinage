@@ -1,4 +1,4 @@
-/* Browser-specific thumbs are shared by every RangeInput variant. */
+/* 各种 RangeInput 变体共用对应浏览器的滑块手柄样式。 */
 .range-input::-webkit-slider-thumb {
   appearance: none;
   height: 11px;

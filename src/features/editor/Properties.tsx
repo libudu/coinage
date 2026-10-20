@@ -1,33 +1,25 @@
-import { RangeInput } from "../../shared/components/RangeInput";
-import { useRef } from "react";
+import { TransactionalRange } from "./TransactionalRange";
+import type { TransactionId } from "../project/projectStore";
 import type { ReactNode } from "react";
 import { clamp, distance } from "../../core/geometry";
-import type { Glyph, Knot, Project, Stroke } from "../../core/model";
+import type { Knot, Stroke } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
 import { BrushControls } from "./BrushControls";
 import { IconButton, NumberField, Section, segmentedStateClasses } from "../../shared/components/controls";
-import type { useProject } from "../project/useProject";
+import { useActiveGlyph, useProject, useProjectActions } from "../project/useProject";
 import { selectionLocked, translateNodes } from "./nodeSelection";
 type Props = {
-  doc: ReturnType<typeof useProject>;
-  glyph: Glyph;
-  nodeId: string | null;
-  nodeIds: string[];
-  strokeId: string | null;
-  showReference: boolean;
-  setShowReference: (v: boolean) => void;
   exportActions: ReactNode;
 };
 export function Properties({
-  doc,
-  glyph,
-  nodeId,
-  nodeIds,
-  strokeId,
-  showReference,
-  setShowReference,
   exportActions,
 }: Props) {
+  const glyph = useActiveGlyph();
+  const nodeIds = useProject((s) => s.session.nodeIds);
+  const nodeId = nodeIds.at(-1) ?? null;
+  const strokeId = useProject((s) => s.session.strokeId);
+  const showReference = useProject((s) => s.session.showReference);
+  const { update, setShowReference } = useProjectActions();
   const node = nodeId ? glyph.nodes[nodeId] : undefined,
     nodes = nodeIds.map((id) => glyph.nodes[id]).filter(Boolean),
     multiple = nodes.length > 1,
@@ -39,10 +31,9 @@ export function Properties({
     x: nodes.reduce((sum, n) => sum + n.x, 0) / (nodes.length || 1),
     y: nodes.reduce((sum, n) => sum + n.y, 0) / (nodes.length || 1),
   };
-  const widthGesture = useRef<Project | null>(null);
   const changeNode = (values: Partial<Knot>) => {
     if (nodes.length && !locked)
-      doc.update((g) => {
+      update((g) => {
         if (values.x !== undefined || values.y !== undefined)
           translateNodes(g, nodeIds, {
             x: values.x === undefined ? 0 : values.x - position.x,
@@ -54,7 +45,7 @@ export function Properties({
   };
   const changeStroke = (values: Partial<Stroke>) => {
     if (stroke && !stroke.locked)
-      doc.update((g) =>
+      update((g) =>
         Object.assign(
           g.strokes.find((s) => s.id === stroke.id)!,
           values,
@@ -81,15 +72,15 @@ export function Properties({
       stroke.nodes.length
     : 40;
   const widthLocked = locked || !!(!node && stroke?.nodes.some(nodeLocked));
-  const changeWidth = (width: number, record = true) => {
+  const changeWidth = (width: number, transaction?: TransactionId) => {
     if (widthLocked) return;
-    doc.update((g) => {
+    update((g) => {
       if (nodes.length) nodeIds.forEach((id) => { g.nodes[id].width = width; });
       else if (stroke)
         [...new Set(stroke.nodes)].forEach((id) => {
           g.nodes[id].width = width;
         });
-    }, record);
+    }, transaction);
   };
   return (
     <aside className="right-panel bg-[var(--panel)] min-h-0 flex flex-col border-l [border-left-style:solid]
@@ -191,32 +182,13 @@ export function Properties({
                 style={{ height: clamp(avgWidth / 4, 2, 35) }}
               />
             </div>
-            <RangeInput
+            <TransactionalRange
               aria-label="笔画粗细"
               min="1"
               max="200"
               value={avgWidth}
               disabled={widthLocked}
-              onPointerDown={(e) => {
-                widthGesture.current = doc.current.current;
-                e.currentTarget.setPointerCapture(e.pointerId);
-              }}
-              onChange={(e) =>
-                changeWidth(+e.target.value, !widthGesture.current)
-              }
-              onPointerUp={() => {
-                if (
-                  widthGesture.current &&
-                  widthGesture.current !== doc.current.current
-                )
-                  doc.remember(widthGesture.current);
-                widthGesture.current = null;
-              }}
-              onPointerCancel={() => {
-                if (widthGesture.current)
-                  doc.replace(widthGesture.current, false);
-                widthGesture.current = null;
-              }}
+              onValueChange={changeWidth}
             />
             <div className="range-scale flex justify-between text-[#77856a] text-[12px] mt-[5px]">
               <span>细</span>
@@ -262,7 +234,7 @@ export function Properties({
             </div>
           </Section>
         )}
-        <BrushControls doc={doc} />
+        <BrushControls />
         <Section title="外观">
           <div className="color-row flex items-center gap-[10px] [font-family:ui-monospace,_monospace] text-[12px] bg-[#f1f4eb]
             border [border-style:solid] border-[#e6ebdd] rounded-[5px] h-[35px] py-0 px-[8px] text-[#748464]">
@@ -274,7 +246,7 @@ export function Properties({
                 aria-label="笔画颜色"
                 value={glyph.color}
                 onChange={(e) =>
-                  doc.update((g) => {
+                  update((g) => {
                     g.color = e.target.value;
                   })
                 }
@@ -301,7 +273,7 @@ export function Properties({
                 title={color}
                 aria-label={`使用颜色 ${color}`}
                 onClick={() =>
-                  doc.update((g) => {
+                  update((g) => {
                     g.color = color;
                   })
                 }
@@ -325,15 +297,13 @@ export function Properties({
               phone:mt-[20px]">
               不透明度<b>{glyph.referenceOpacity}%</b>
             </div>
-            <RangeInput
+            <TransactionalRange
               aria-label="原图不透明度"
               min="0"
               max="100"
               value={glyph.referenceOpacity}
-              onChange={(e) =>
-                doc.update((g) => {
-                  g.referenceOpacity = +e.target.value;
-                })
+              onValueChange={(value, transaction) =>
+                update((g) => { g.referenceOpacity = value; }, transaction)
               }
             />
           </Section>
