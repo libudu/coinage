@@ -6,6 +6,7 @@ import { IconButton } from "../shared/components/controls";
 import { ImportDialog } from "../features/tracing/ImportDialog";
 import { EditorCanvas } from "../features/editor/EditorCanvas";
 import { EditorContextMenu } from "../features/editor/EditorContextMenu";
+import type { StrokeEdge } from "../features/editor/strokeEdges";
 import { Properties } from "../features/editor/Properties";
 import {
   ProjectProvider,
@@ -59,7 +60,9 @@ function ProjectSaveError({ exportProject }: { exportProject: () => void }) {
 
 function Workspace() {
   const [page, setPage] = useState<WorkspacePage>("library");
-  const [contextMenu, setContextMenu] = useState<Point | null>(null);
+  const [contextMenu, setContextMenu] = useState<
+    (Point & { edge?: StrokeEdge }) | null
+  >(null);
   const [editingGlyphInfo, setEditingGlyphInfo] = useState<Pick<
     Glyph,
     "id" | "name" | "description"
@@ -86,12 +89,13 @@ function Workspace() {
     position: Point,
     n: string | null,
     s: string | null,
+    edge?: StrokeEdge,
   ) => {
     const nodeIds = api.getState().session.nodeIds;
     if (n && nodeIds.includes(n))
       selectNodes([...nodeIds.filter((id) => id !== n), n], s);
     else select(n, s);
-    setContextMenu(position);
+    setContextMenu({ ...position, edge });
   };
   const openGlyphContextMenu = (id: string, position: Point) => {
     switchGlyph(id);
@@ -191,6 +195,7 @@ function Workspace() {
       {contextMenu && (
         <EditorContextMenu
           position={contextMenu}
+          edge={contextMenu.edge}
           onClose={closeContextMenu}
           remove={remove}
           duplicate={duplicate}

@@ -1,6 +1,60 @@
 import { isBrushDefaults } from "./brush";
 import type { Project } from "./model";
 
+function validSegments(value: unknown, nodes: string[]) {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length !== nodes.length - 1) return false;
+  const completed = new Set<string>();
+  let group: { id: string; end: number; steps: number } | undefined;
+  for (const [i, segment] of value.entries()) {
+    if (
+      !segment ||
+      typeof segment !== "object" ||
+      segment.from !== nodes[i] ||
+      segment.to !== nodes[i + 1] ||
+      ![segment.handleOut, segment.handleIn].every(
+        (p) => p && Number.isFinite(p.x) && Number.isFinite(p.y),
+      ) ||
+      (segment.endBoundary !== undefined && segment.endBoundary !== false)
+    )
+      return false;
+    const sample = segment.sampling;
+    if (sample !== undefined) {
+      if (
+        !sample ||
+        typeof sample !== "object" ||
+        typeof sample.group !== "string" ||
+        !sample.group ||
+        !Number.isFinite(sample.start) ||
+        !Number.isFinite(sample.end) ||
+        sample.start < 0 ||
+        sample.end > 1 ||
+        sample.start >= sample.end ||
+        !Number.isInteger(sample.steps) ||
+        sample.steps < 1 ||
+        sample.steps > 10000
+      )
+        return false;
+    }
+    if (group && group.id !== sample?.group) {
+      if (group.end !== 1) return false;
+      completed.add(group.id);
+      group = undefined;
+    }
+    if (sample) {
+      if (
+        completed.has(sample.group) ||
+        (group
+          ? sample.start !== group.end || sample.steps !== group.steps
+          : sample.start !== 0)
+      )
+        return false;
+      group = { id: sample.group, end: sample.end, steps: sample.steps };
+    }
+  }
+  return !group || group.end === 1;
+}
+
 export function isProject(value: unknown): value is Project {
   try {
     if (!value || typeof value !== "object") return false;
@@ -35,7 +89,9 @@ export function isProject(value: unknown): value is Project {
           Number.isFinite(g.referenceOpacity) &&
           g.referenceOpacity >= 0 &&
           g.referenceOpacity <= 100 &&
-          g.nodes && typeof g.nodes === "object" && !Array.isArray(g.nodes) &&
+          g.nodes &&
+          typeof g.nodes === "object" &&
+          !Array.isArray(g.nodes) &&
           Object.values(g.nodes).length < 20000 &&
           Object.entries(g.nodes).every(
             ([key, n]) =>
@@ -65,7 +121,10 @@ export function isProject(value: unknown): value is Project {
               ["miter", "round", "bevel"].includes(s.join) &&
               Array.isArray(s.nodes) &&
               s.nodes.length >= 2 &&
-              s.nodes.every((id) => typeof id === "string" && Object.hasOwn(g.nodes, id)),
+              validSegments(s.segments, s.nodes) &&
+              s.nodes.every(
+                (id) => typeof id === "string" && Object.hasOwn(g.nodes, id),
+              ),
           ),
       )
     );

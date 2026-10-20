@@ -11,6 +11,7 @@ import {
   translateNodes,
 } from "../editor/nodeSelection";
 import { clamp } from "../../core/geometry";
+import { reconcileStrokeGeometry } from "../../core/strokeEditing";
 
 export type TransactionId = symbol;
 type Transaction = { id: TransactionId; before: Project };
@@ -174,6 +175,15 @@ export function createProjectStore(initialProject: Project) {
         const state = get();
         const project = produce(state.project, (draft) => {
           recipe(activeGlyph({ project: draft }), draft);
+          draft.glyphs.forEach((g) => {
+            const before = state.project.glyphs.find(
+              (previous) => previous.id === g.id,
+            );
+            const origin = state.transaction?.before.glyphs.find(
+              (initial) => initial.id === g.id,
+            );
+            if (before) reconcileStrokeGeometry(before, g, origin ?? before);
+          });
           if (!draft.glyphs.some((g) => g.id === draft.activeId))
             draft.activeId = draft.glyphs[0].id;
         });
@@ -403,6 +413,17 @@ export function createProjectStore(initialProject: Project) {
         );
         if (!stroke) return;
         const sid = uid();
+        const originals = stroke.nodes.map((id) => glyph.nodes[id]);
+        const dx = clamp(
+          24,
+          -Math.min(...originals.map((n) => n.x)),
+          640 - Math.max(...originals.map((n) => n.x)),
+        );
+        const dy = clamp(
+          24,
+          -Math.min(...originals.map((n) => n.y)),
+          640 - Math.max(...originals.map((n) => n.y)),
+        );
         actions.update((g) => {
           const mapping = new Map<string, string>();
           const nodes = stroke.nodes.map((old) => {
@@ -413,8 +434,8 @@ export function createProjectStore(initialProject: Project) {
             g.nodes[id] = {
               ...node,
               id,
-              x: clamp(node.x + 24, 0, 640),
-              y: clamp(node.y + 24, 0, 640),
+              x: node.x + dx,
+              y: node.y + dy,
             };
             return id;
           });
@@ -423,6 +444,15 @@ export function createProjectStore(initialProject: Project) {
             id: sid,
             name: `${stroke.name} 副本`,
             nodes,
+            ...(stroke.segments
+              ? {
+                  segments: stroke.segments.map((segment) => ({
+                    ...segment,
+                    from: mapping.get(segment.from)!,
+                    to: mapping.get(segment.to)!,
+                  })),
+                }
+              : {}),
             locked: false,
           });
         });

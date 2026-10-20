@@ -1,4 +1,5 @@
 import type { Point } from "../../core/model";
+import type { StrokeEdge } from "./strokeEdges";
 
 export type Tool = "select" | "pen" | "branch" | "hand";
 export type EditorCanvasProps = {
@@ -6,5 +7,10 @@ export type EditorCanvasProps = {
   toast: (message: string) => void;
   modalOpen: boolean;
   showShortcuts: () => void;
-  openContextMenu: (position: Point, node: string | null, stroke: string | null) => void;
+  openContextMenu: (
+    position: Point,
+    node: string | null,
+    stroke: string | null,
+    edge?: StrokeEdge,
+  ) => void;
 };

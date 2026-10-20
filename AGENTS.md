@@ -16,6 +16,7 @@ src/
 ├── core/
 │   ├── model.ts               # 数据类型、ID 与空字形/笔画工厂
 │   ├── geometry.ts            # 几何工具、中心线、连接关系与填充轮廓
+│   ├── strokeEditing.ts       # 边控制柄与普通编辑、拓扑变化的同步
 │   ├── svg.ts                 # SVG 文档输出与 XML 转义
 │   ├── validation.ts          # 手稿格式与节点引用校验
 │   ├── projectPatch.ts        # 按 ID 和字段生成、校验与合并增量补丁
@@ -34,6 +35,7 @@ src/
 │   │   ├── AddGlyphMenu.tsx   # 新建空白字符与图片导入菜单
 │   │   ├── useEditorCommands.ts # 删除、复制、撤销重做与编辑快捷键
 │   │   ├── nodeSelection.ts    # 节点集合、锁定保护、整体位移与批量删除
+│   │   ├── strokeEdges.ts      # 笔画边定位、中点插入与曲线拆分
 │   │   ├── Properties.tsx      # 节点、笔画、笔锋和外观属性
 │   │   ├── GlyphExport.tsx     # 属性栏导出按钮与格式菜单状态
 │   │   ├── EditorContextMenu.tsx # 字符、笔画与节点操作右键菜单
@@ -74,12 +76,14 @@ src/
 public/reference.png            # 可直接访问的导入示例
 tests/core.test.ts              # 几何、描摹、导出与数据校验测试
 tests/nodeSelection.test.ts     # 多节点移动、边界、锁定与删除测试
+tests/strokeEdges.test.ts       # 边定位、共享曲线与笔锋、中点持久化与历史回归测试
 tests/server.test.ts            # 本地读写、备份、版本冲突与访问限制测试
 tests/projectStorage.test.ts    # 初始化、增量保存队列与错误测试
 tests/projectPatch.test.ts      # 字段增量、原图省略、顺序与补丁校验测试
 tests/projectStore.test.ts      # 状态、事务、历史、选择与锁定测试
 tests/projectAutosave.test.ts   # 保存触发、重试、冲突与过期响应测试
 tests/editorTransactions.test.ts # jsdom 组件事件与事务边界回归测试
+tests/canvasGeometry.test.ts     # 插点后的实际指针拖动、控制柄、往返与历史回归测试
 tests/workspaceNavigation.test.ts # 字库预览、基本信息、页面切换与快捷键隔离测试
 tests/localSettings.test.ts      # 前端配置默认值、持久化、无效数据与存储异常测试
 tests/support/domLoader.mjs     # 组件测试中的样式导入适配
@@ -107,6 +111,8 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 
 - 状态由每个 `ProjectProvider` 独立持有；通过 `projectStore` actions 修改，组件用 `useProject(selector)` 按需订阅、`useProjectActions` 获取操作，不逐层传递整份 store/doc。
 - 用 Immer 保留未变分支引用；字形、节点、笔画按 ID 派生，不重复存储。共享节点引用须有效，锁定保护几何和连接关系。
+- 中点拆分的控制柄存于 `Stroke.segments`，按边的引用隔离，不改写共享节点；采样区间与笔锋边界随手稿保存，普通编辑通过 `strokeEditing` 同步。
+- 连续编辑从事务开始时的边几何重算；拖回原位须恢复控制柄、采样和笔锋边界，不新增历史或清空重做。笔画复制采用整体受限平移，不能逐节点裁剪坐标。
 - 连续拖拽、滑块、改名使用事务，每次只记一条历史；控件复用 `useEditTransaction`，手稿滑块用 `TransactionalRange`。指针只结束自身事务，过期 token 禁止写入；分支实际移动后才创建，回源点时移除。
 - 历史保留 60 步，新提交清空重做，取消或无变化不记历史。选择、工具、原图显示属于会话，不进入历史或保存。
 - 撤销重做仅针对造字编辑。字符新建、导入、基本信息编辑、复制和删除同步到历史快照，不新增历史或清空有效重做；删除字符时清理仅影响该字符的历史。字符删除须二次确认且无法撤销，节点和笔画删除仍可撤销。

@@ -10,10 +10,25 @@ export type Knot = Point & {
   handleIn?: Point;
   join?: "miter" | "round" | "bevel";
 };
+// 控制柄属于边的这一次引用，拆分共享节点时不改写节点本身。
+export type StrokeSegment = {
+  from: string;
+  to: string;
+  handleOut: Point;
+  handleIn: Point;
+  endBoundary?: false;
+  sampling?: {
+    group: string;
+    start: number;
+    end: number;
+    steps: number;
+  };
+};
 export type Stroke = {
   id: string;
   name: string;
   nodes: string[];
+  segments?: StrokeSegment[];
   visible: boolean;
   locked: boolean;
   cap: "butt" | "round" | "square";

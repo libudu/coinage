@@ -10,6 +10,8 @@ import {
   useProjectActions,
 } from "../project/useProject";
 import { selectionLocked } from "./nodeSelection";
+import { canInsertEdgeMidpoint, insertEdgeMidpoint } from "./strokeEdges";
+import type { StrokeEdge } from "./strokeEdges";
 
 type Props = {
   remove: () => void;
@@ -17,6 +19,7 @@ type Props = {
   editGlyphInfo: () => void;
   toast: (s: string) => void;
   position: Point;
+  edge?: StrokeEdge;
   onClose: () => void;
 };
 
@@ -34,6 +37,7 @@ export function EditorContextMenu({
   editGlyphInfo,
   toast,
   position,
+  edge,
   onClose,
 }: Props) {
   const glyph = useActiveGlyph();
@@ -109,6 +113,23 @@ export function EditorContextMenu({
               ? { x: -n.handleIn.x, y: n.handleIn.y }
               : { x: -n.handleIn.y, y: n.handleIn.x };
       });
+      g.strokes.forEach((s) => {
+        if (!s.segments || !s.nodes.some((id) => ids.includes(id))) return;
+        const vector = (p: Point): Point =>
+          kind === "flip" ? { x: -p.x, y: p.y } : { x: -p.y, y: p.x };
+        s.segments = s.segments.map((segment) => ({
+          ...segment,
+          handleOut: ids.includes(segment.from)
+            ? vector(segment.handleOut)
+            : segment.handleOut,
+          handleIn: ids.includes(segment.to)
+            ? vector(segment.handleIn)
+            : segment.handleIn,
+          ...(!s.nodes.every((id) => ids.includes(id))
+            ? { sampling: undefined }
+            : {}),
+        }));
+      });
       const dx =
         Math.min(...nodes.map((n) => n.x)) < 0
           ? -Math.min(...nodes.map((n) => n.x))
@@ -158,11 +179,33 @@ export function EditorContextMenu({
       g.strokes.find((s) => s.id === stroke.id)!.nodes = stroke.nodes.map(
         (n) => (n === node.id ? id : n),
       );
+      const target = g.strokes.find((s) => s.id === stroke.id)!;
+      if (target.segments)
+        target.segments = target.segments.map((segment) => ({
+          ...segment,
+          from: segment.from === node.id ? id : segment.from,
+          to: segment.to === node.id ? id : segment.to,
+        }));
     });
     select(id, stroke.id);
     toast("已拆开当前笔画的连接");
   };
   const items: MenuAction[] = [];
+  if (edge && stroke?.id === edge.strokeId && !nodeIds.length) {
+    items.push({
+      label: "插入中点",
+      icon: "node",
+      disabled: !canInsertEdgeMidpoint(glyph, edge),
+      action: () => {
+        if (!canInsertEdgeMidpoint(glyph, edge)) return;
+        const id = uid();
+        update((g) => {
+          insertEdgeMidpoint(g, edge, id);
+        });
+        select(id, edge.strokeId);
+      },
+    });
+  }
   if (stroke || multiple) {
     const transformLocked =
       locked || (!multiple && !!stroke?.nodes.some(nodeLocked));

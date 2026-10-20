@@ -1,4 +1,9 @@
-import { centerPath, distance, outlinePath } from "../../core/geometry";
+import {
+  centerPath,
+  distance,
+  outlinePath,
+  strokeControls,
+} from "../../core/geometry";
 import type { Glyph, Point } from "../../core/model";
 import type { BrushDefaults } from "../../core/brush";
 import type { Tool } from "./canvasTypes";
@@ -63,12 +68,25 @@ export function GlyphArtwork({
       handle = { x: ((b.x - a.x) / len) * 50, y: ((b.y - a.y) / len) * 50 };
     }
   }
-  const incomingHandle =
+  let incomingHandle =
     node?.mode === "smooth" && node.handleIn
       ? node.handleIn
       : handle
         ? { x: -handle.x, y: -handle.y }
         : null;
+  if (node && node.mode !== "corner" && stroke?.segments) {
+    const nodes = stroke.nodes.map((id) => glyph.nodes[id]);
+    const out = stroke.nodes.indexOf(node.id),
+      incoming = stroke.nodes.lastIndexOf(node.id);
+    if (out < nodes.length - 1) {
+      const p = strokeControls(nodes, stroke, out)[0];
+      handle = { x: p.x - node.x, y: p.y - node.y };
+    }
+    if (incoming > 0) {
+      const p = strokeControls(nodes, stroke, incoming - 1)[1];
+      incomingHandle = { x: p.x - node.x, y: p.y - node.y };
+    }
+  }
   return (
     <>
       <defs>
@@ -84,12 +102,7 @@ export function GlyphArtwork({
       <rect width="640" height="640" fill="#fffefa" />
       {grid && !preview && (
         <g pointerEvents="none">
-          <rect
-            width="640"
-            height="640"
-            fill="url(#dot-grid)"
-            opacity=".65"
-          />
+          <rect width="640" height="640" fill="url(#dot-grid)" opacity=".65" />
           <rect
             x="64"
             y="64"
@@ -153,9 +166,7 @@ export function GlyphArtwork({
                 strokeOpacity={strokeId === s.id ? 1 : 0.6}
                 strokeWidth={1 / scale}
                 strokeDasharray={
-                  strokeId === s.id
-                    ? undefined
-                    : `${3 / scale} ${3 / scale}`
+                  strokeId === s.id ? undefined : `${3 / scale} ${3 / scale}`
                 }
                 pointerEvents="none"
               />
@@ -173,12 +184,7 @@ export function GlyphArtwork({
                 className="node-target"
                 onPointerDown={(e) => start(e, "node", id)}
               >
-                <circle
-                  cx={n.x}
-                  cy={n.y}
-                  r={10 / scale}
-                  fill="transparent"
-                />
+                <circle cx={n.x} cy={n.y} r={10 / scale} fill="transparent" />
                 {n.mode === "corner" ? (
                   <rect
                     x={n.x - size / 2}
@@ -224,9 +230,7 @@ export function GlyphArtwork({
                         strokeWidth={1.3 / scale}
                         className="handle-target"
                         data-node-id={node.id}
-                        onPointerDown={(e) =>
-                          start(e, "handle", node.id, sign)
-                        }
+                        onPointerDown={(e) => start(e, "handle", node.id, sign)}
                       />
                     </g>
                   );

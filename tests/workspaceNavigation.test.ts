@@ -6,7 +6,8 @@ import { JSDOM } from "jsdom";
 import { act, createElement as h } from "react";
 import { emptyGlyph, newStroke } from "../src/core/model";
 import type { Project } from "../src/core/model";
-import { glyphPath } from "../src/core/geometry";
+import { glyphPath, outlinePath } from "../src/core/geometry";
+import { isProject } from "../src/core/validation";
 import { defaultBrush } from "../src/core/brush";
 import { projectStorage } from "../src/features/project/projectStorage";
 
@@ -23,6 +24,18 @@ Object.assign(globalThis, {
     observe() {}
     disconnect() {}
   },
+  DOMPoint: class {
+    constructor(
+      public x: number,
+      public y: number,
+    ) {}
+    matrixTransform(m: { a: number; d: number; e: number; f: number }) {
+      return { x: this.x * m.a + m.e, y: this.y * m.d + m.f };
+    }
+  },
+});
+Object.assign(dom.window.SVGElement.prototype, {
+  getScreenCTM: () => ({ inverse: () => ({ a: 1, d: 1, e: 0, f: 0 }) }),
 });
 Object.assign(dom.window.HTMLDialogElement.prototype, {
   showModal() {
@@ -53,13 +66,12 @@ function manuscript(): Project {
   };
 }
 
-async function render(t: TestContext) {
+async function render(t: TestContext, project = manuscript()) {
   const saved: Project[] = [];
   t.mock.method(projectStorage, "save", async (project: Project) => {
     saved.push(project);
   });
-  const container = document.createElement("div"),
-    project = manuscript();
+  const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   await act(async () => root.render(h(App, { initialProject: project })));
@@ -97,12 +109,12 @@ function library(container: Element) {
 function editor(container: Element) {
   return container.querySelector<HTMLElement>(".workspace")!;
 }
-async function contextMenu(target: Element) {
+async function contextMenu(target: Element, x = 120, y = 120) {
   const event = new dom.window.MouseEvent("contextmenu", {
     bubbles: true,
     cancelable: true,
-    clientX: 120,
-    clientY: 120,
+    clientX: x,
+    clientY: y,
   });
   await act(async () => {
     target.dispatchEvent(event);
@@ -137,6 +149,184 @@ async function key(key: string, ctrlKey = false) {
     );
   });
 }
+
+test("the canvas edge menu inserts at the edge midpoint after coordinate transforms, saves and supports undo/redo", async (t) => {
+  const initial = manuscript();
+  const glyph = initial.glyphs[0];
+  glyph.nodes.b = { id: "b", x: 300, y: 100, width: 40, mode: "corner" };
+  glyph.nodes.c = { id: "c", x: 300, y: 500, width: 60, mode: "corner" };
+  glyph.strokes[0].nodes.push("c");
+  const { container, saved } = await render(t, initial);
+  await click(button(container, "编辑 甲"));
+  const canvas = editor(container).querySelector<SVGSVGElement>(
+    'svg[aria-label="字形编辑画布"]',
+  )!;
+  canvas.getScreenCTM = () =>
+    ({ inverse: () => ({ a: 2, d: 2, e: 60, f: -60 }) }) as DOMMatrix;
+  const stroke = canvas.querySelector("[data-stroke-id]")!;
+  await contextMenu(stroke);
+  assert.equal(button(container, "插入中点").disabled, false);
+  await click(button(container, "插入中点"));
+  assert.equal(container.querySelector(".editor-context-menu"), null);
+  assert.equal(canvas.querySelectorAll("g.node-target").length, 4);
+  const selected = canvas.querySelector('[data-selected="true"]')!;
+  const id = selected.getAttribute("data-node-id")!;
+  assert.equal(selected.querySelector("circle")!.getAttribute("cx"), "300");
+  assert.equal(selected.querySelector("circle")!.getAttribute("cy"), "300");
+  assert.equal(button(container, "撤销 Ctrl+Z").disabled, false);
+  await key("s", true);
+  const updated = saved.at(-1)!.glyphs[0];
+  assert.deepEqual(updated.strokes[0].nodes, ["a", "b", id, "c"]);
+  assert.equal(updated.nodes[id].width, 50);
+  await click(button(container, "撤销 Ctrl+Z"));
+  assert.equal(canvas.querySelectorAll("g.node-target").length, 3);
+  assert.equal(button(container, "撤销 Ctrl+Z").disabled, true);
+  await click(button(container, "重做 Ctrl+Shift+Z"));
+  assert.equal(canvas.querySelectorAll("g.node-target").length, 4);
+  await contextMenu(canvas.querySelector('[data-node-id="a"]')!);
+  assert.equal(
+    Array.from(container.querySelectorAll('[role="menuitem"]')).some(
+      (item) => item.textContent === "插入中点",
+    ),
+    false,
+  );
+});
+
+test("the edge menu respects locked strokes and is absent from glyph menus and pen mode", async (t) => {
+  const initial = manuscript();
+  initial.glyphs[0].strokes[0].locked = true;
+  const { container } = await render(t, initial);
+  await click(button(container, "编辑 甲"));
+  await contextMenu(editor(container).querySelector("[data-stroke-id]")!);
+  assert.equal(button(container, "插入中点").disabled, true);
+  await click(button(container, "插入中点"));
+  assert.equal(button(container, "撤销 Ctrl+Z").disabled, true);
+  assert.equal(editor(container).querySelectorAll("g.node-target").length, 2);
+  await key("Escape");
+  await contextMenu(editor(container).querySelector(".glyph-card.selected")!);
+  const hasInsert = () =>
+    Array.from(container.querySelectorAll('[role="menuitem"]')).some(
+      (item) => item.textContent === "插入中点",
+    );
+  assert.equal(hasInsert(), false);
+  await key("Escape");
+  await click(button(container, "钢笔 P"));
+  await contextMenu(editor(container).querySelector("[data-stroke-id]")!);
+  assert.equal(hasInsert(), false);
+});
+
+test("the midpoint menu preserves shared curve artwork and brush contours through saving and undo/redo", async (t) => {
+  const initial = manuscript(),
+    glyph = initial.glyphs[0];
+  glyph.nodes.b = {
+    id: "b",
+    x: 300,
+    y: 100,
+    width: 80,
+    mode: "smooth",
+    handle: { x: 80, y: 30 },
+    handleIn: { x: -40, y: -20 },
+  };
+  glyph.nodes.c = {
+    id: "c",
+    x: 300,
+    y: 500,
+    width: 120,
+    mode: "smooth",
+    handle: { x: 80, y: 20 },
+  };
+  glyph.nodes.d = { id: "d", x: 500, y: 300, width: 80, mode: "corner" };
+  glyph.strokes[0].nodes = ["b", "c"];
+  glyph.strokes.push(newStroke(["b", "d"], 1));
+  initial.brush = {
+    ...defaultBrush,
+    startTip: "horizontal",
+    endTip: "vertical",
+  };
+  const originalNodes = structuredClone(glyph.nodes);
+  const originalPaths = glyph.strokes.map((s) =>
+    outlinePath(glyph, s, initial.brush),
+  );
+  const { container, saved } = await render(t, initial);
+  await click(button(container, "编辑 甲"));
+  const canvas = editor(container).querySelector<SVGSVGElement>(
+    'svg[aria-label="字形编辑画布"]',
+  )!;
+  const paths = () =>
+    [...canvas.querySelectorAll("[data-stroke-id]")].map((p) =>
+      p.getAttribute("d"),
+    );
+  assert.deepEqual(paths(), originalPaths);
+  await contextMenu(canvas.querySelector("[data-stroke-id]")!);
+  await click(button(container, "插入中点"));
+  assert.deepEqual(paths(), originalPaths);
+  const mid = canvas
+    .querySelector('[data-selected="true"]')!
+    .getAttribute("data-node-id")!;
+  await key("s", true);
+  const inserted = saved.at(-1)!;
+  assert.ok(isProject(inserted));
+  assert.deepEqual(inserted.glyphs[0].strokes[0].nodes, ["b", mid, "c"]);
+  assert.deepEqual(inserted.glyphs[0].strokes[1].nodes, ["b", "d"]);
+  for (const [id, node] of Object.entries(originalNodes))
+    assert.deepEqual(inserted.glyphs[0].nodes[id], node);
+  await click(button(container, "撤销 Ctrl+Z"));
+  assert.equal(button(container, "撤销 Ctrl+Z").disabled, true);
+  assert.equal(canvas.querySelector(`[data-node-id="${mid}"]`), null);
+  assert.deepEqual(paths(), originalPaths);
+  await key("s", true);
+  assert.deepEqual(saved.at(-1), initial);
+  await click(button(container, "重做 Ctrl+Shift+Z"));
+  assert.deepEqual(paths(), originalPaths);
+  await key("s", true);
+  assert.deepEqual(saved.at(-1), inserted);
+});
+
+test("transforms and disconnecting shared nodes keep segment geometry valid and undoable", async (t) => {
+  const initial = manuscript(),
+    glyph = initial.glyphs[0];
+  glyph.nodes.a.mode = "smooth";
+  glyph.nodes.a.handle = { x: 60, y: 10 };
+  glyph.nodes.c = { id: "c", x: 300, y: 150, width: 50, mode: "corner" };
+  glyph.strokes.push(newStroke(["a", "c"], 1));
+  const { container, saved } = await render(t, initial);
+  await click(button(container, "编辑 甲"));
+  const canvas = editor(container).querySelector<SVGSVGElement>(
+    'svg[aria-label="字形编辑画布"]',
+  )!;
+  const target = () => canvas.querySelector("[data-stroke-id]")!;
+  await contextMenu(target());
+  await click(button(container, "插入中点"));
+  await key("s", true);
+  const inserted = saved.at(-1)!;
+  await contextMenu(target());
+  await click(button(container, "旋转 90°"));
+  await key("s", true);
+  const rotated = saved.at(-1)!;
+  assert.ok(isProject(rotated));
+  const originalSegment = inserted.glyphs[0].strokes[0].segments![0];
+  assert.deepEqual(rotated.glyphs[0].strokes[0].segments![0].handleOut, {
+    x: -originalSegment.handleOut.y,
+    y: originalSegment.handleOut.x,
+  });
+  await click(button(container, "撤销 Ctrl+Z"));
+  await key("s", true);
+  assert.deepEqual(saved.at(-1), inserted);
+  await contextMenu(canvas.querySelector('[data-node-id="a"]')!);
+  await click(button(container, "拆开连接"));
+  await key("s", true);
+  const disconnected = saved.at(-1)!.glyphs[0];
+  assert.ok(isProject(saved.at(-1)));
+  assert.notEqual(disconnected.strokes[0].nodes[0], "a");
+  assert.equal(disconnected.strokes[1].nodes[0], "a");
+  assert.equal(
+    disconnected.strokes[0].segments![0].from,
+    disconnected.strokes[0].nodes[0],
+  );
+  await click(button(container, "撤销 Ctrl+Z"));
+  await key("s", true);
+  assert.deepEqual(saved.at(-1), inserted);
+});
 
 test("the library composes glyph artwork by character name and reserves one cell per missing Unicode character", async (t) => {
   const { container, project } = await render(t);

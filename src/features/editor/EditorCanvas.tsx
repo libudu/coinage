@@ -7,6 +7,7 @@ import { IconButton } from "../../shared/components/controls";
 import type { EditorCanvasProps, Tool } from "./canvasTypes";
 import { GlyphArtwork } from "./GlyphArtwork";
 import { useCanvasInteraction } from "./useCanvasInteraction";
+import { findStrokeEdge } from "./strokeEdges";
 import {
   useActiveGlyph,
   useProject,
@@ -225,10 +226,28 @@ export function EditorCanvas({
                 .closest("[data-stroke-id]")
                 ?.getAttribute("data-stroke-id") ?? null);
           if (!targetNode && !targetStroke) return;
+          const clickedStroke = glyph.strokes.find(
+            (s) => s.id === targetStroke,
+          );
+          const matrix =
+            !targetNode && tool === "select"
+              ? svg.current?.getScreenCTM()
+              : null;
+          const edge =
+            clickedStroke && matrix
+              ? findStrokeEdge(
+                  glyph,
+                  clickedStroke,
+                  new DOMPoint(e.clientX, e.clientY).matrixTransform(
+                    matrix.inverse(),
+                  ),
+                )
+              : undefined;
           openContextMenu(
             { x: e.clientX, y: e.clientY },
             targetNode,
             targetStroke,
+            edge,
           );
         }}
         onDragOver={(e) => {

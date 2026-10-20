@@ -1,6 +1,6 @@
 import { applyBrushProfile, defaultBrush } from "./brush";
 import type { BrushDefaults, BrushSample } from "./brush";
-import type { Glyph, Knot, Point, Stroke } from "./model";
+import type { Glyph, Knot, Point, Stroke, StrokeSegment } from "./model";
 
 export const clamp = (n: number, min: number, max: number) =>
   Math.max(min, Math.min(max, n));
@@ -28,12 +28,55 @@ export function controls(nodes: Knot[], i: number): [Point, Point] {
   };
   return [tangent(a, before, b, 1), tangent(b, a, after, -1)];
 }
+export function strokeControls(
+  nodes: Knot[],
+  stroke: Stroke,
+  i: number,
+): [Point, Point] {
+  const segment = stroke.segments?.[i];
+  if (!segment) return controls(nodes, i);
+  return [
+    {
+      x: nodes[i].x + segment.handleOut.x,
+      y: nodes[i].y + segment.handleOut.y,
+    },
+    {
+      x: nodes[i + 1].x + segment.handleIn.x,
+      y: nodes[i + 1].y + segment.handleIn.y,
+    },
+  ];
+}
+
+export function strokeSegments(glyph: Glyph, stroke: Stroke): StrokeSegment[] {
+  if (stroke.segments) return stroke.segments;
+  const nodes = stroke.nodes.map((id) => glyph.nodes[id]);
+  return nodes.slice(1).map((b, i) => {
+    const a = nodes[i],
+      [c, d] = controls(nodes, i);
+    return {
+      from: a.id,
+      to: b.id,
+      handleOut: { x: c.x - a.x, y: c.y - a.y },
+      handleIn: { x: d.x - b.x, y: d.y - b.y },
+    };
+  });
+}
+export function segmentSampleSteps(a: Knot, b: Knot, c: Point, d: Point) {
+  return a.mode === "corner" &&
+    b.mode === "corner" &&
+    c.x === a.x &&
+    c.y === a.y &&
+    d.x === b.x &&
+    d.y === b.y
+    ? 1
+    : Math.max(8, Math.ceil(distance(a, b) / 5));
+}
 export function centerPath(g: Glyph, stroke: Stroke) {
   const nodes = stroke.nodes.map((id) => g.nodes[id]).filter(Boolean);
   if (!nodes.length) return "";
   let d = `M${nodes[0].x},${nodes[0].y}`;
   for (let i = 0; i < nodes.length - 1; i++) {
-    const [a, b] = controls(nodes, i),
+    const [a, b] = strokeControls(nodes, stroke, i),
       end = nodes[i + 1];
     d += ` C${a.x},${a.y} ${b.x},${b.y} ${end.x},${end.y}`;
   }
@@ -48,14 +91,20 @@ function samples(g: Glyph, stroke: Stroke): Sample[] {
   for (let i = 0; i < nodes.length - 1; i++) {
     const a = nodes[i],
       b = nodes[i + 1],
-      [c, d] = controls(nodes, i);
-    const steps =
-      a.mode === "corner" && b.mode === "corner"
-        ? 1
-        : Math.max(8, Math.ceil(distance(a, b) / 5));
-    for (let j = 1; j <= steps; j++) {
-      const t = j / steps,
+      [c, d] = strokeControls(nodes, stroke, i);
+    const segment = stroke.segments?.[i],
+      sampling = segment?.sampling;
+    const steps = sampling?.steps ?? segmentSampleSteps(a, b, c, d);
+    const start = sampling?.start ?? 0,
+      end = sampling?.end ?? 1;
+    for (
+      let j = Math.floor(start * steps) + 1;
+      j <= Math.floor(end * steps);
+      j++
+    ) {
+      const t = (j / steps - start) / (end - start),
         s = 1 - t;
+      const boundary = j === end * steps && segment?.endBoundary !== false;
       const p = {
         x:
           s ** 3 * a.x +
@@ -68,9 +117,9 @@ function samples(g: Glyph, stroke: Stroke): Sample[] {
           3 * s * t * t * d.y +
           t ** 3 * b.y,
         width: a.width + (b.width - a.width) * t,
-        corner: j === steps && b.mode === "corner",
+        corner: j === end * steps && b.mode === "corner",
         join: b.join,
-        boundary: j === steps,
+        boundary,
       };
       if (distance(out[out.length - 1], p) > 0.05) out.push(p);
     }
@@ -98,7 +147,9 @@ function connectedSample(
   let peer: Stroke | undefined;
   for (const candidate of g.strokes) {
     if (candidate.id === stroke.id || !candidate.visible) continue;
-    const indices = candidate.nodes.flatMap((node, i) => (node === id ? [i] : []));
+    const indices = candidate.nodes.flatMap((node, i) =>
+      node === id ? [i] : [],
+    );
     if (!indices.length) continue;
     if (
       peer ||
@@ -120,11 +171,17 @@ export function tipIsConnected(g: Glyph, stroke: Stroke, end: "start" | "end") {
     end === "start" ? stroke.nodes[0] : stroke.nodes[stroke.nodes.length - 1];
   return (
     stroke.nodes.filter((node) => node === id).length > 1 ||
-    g.strokes.some((s) => s.id !== stroke.id && s.visible && s.nodes.includes(id))
+    g.strokes.some(
+      (s) => s.id !== stroke.id && s.visible && s.nodes.includes(id),
+    )
   );
 }
 
-function outlinePolygons(g: Glyph, stroke: Stroke, defaults?: BrushDefaults): Point[][] {
+function outlinePolygons(
+  g: Glyph,
+  stroke: Stroke,
+  defaults?: BrushDefaults,
+): Point[][] {
   const brush = defaults ?? defaultBrush;
   let points = samples(g, stroke);
   if (points.length < 2) return [];
@@ -150,7 +207,13 @@ function outlinePolygons(g: Glyph, stroke: Stroke, defaults?: BrushDefaults): Po
     startCap = defaults === undefined ? stroke.cap : "butt",
     endCap = defaults === undefined ? stroke.cap : "butt";
   if (!closed)
-    points = applyBrushProfile(points, startTip, endTip, brush.startBrush, brush.endBrush);
+    points = applyBrushProfile(
+      points,
+      startTip,
+      endTip,
+      brush.startBrush,
+      brush.endBrush,
+    );
   const left: Point[] = [],
     right: Point[] = [];
   const arc = (
@@ -221,9 +284,13 @@ function outlinePolygons(g: Glyph, stroke: Stroke, defaults?: BrushDefaults): Po
         );
       } else
         target.push({
-          x: p.x + (sum.x * half) / denominator +
+          x:
+            p.x +
+            (sum.x * half) / denominator +
             outgoing.x * (p.brushSkew || 0) * side,
-          y: p.y + (sum.y * half) / denominator +
+          y:
+            p.y +
+            (sum.y * half) / denominator +
             outgoing.y * (p.brushSkew || 0) * side,
         });
     }
@@ -246,14 +313,26 @@ function outlinePolygons(g: Glyph, stroke: Stroke, defaults?: BrushDefaults): Po
   return [polygon];
 }
 
-export function outlinePath(g: Glyph, stroke: Stroke, defaults?: BrushDefaults): string {
+export function outlinePath(
+  g: Glyph,
+  stroke: Stroke,
+  defaults?: BrushDefaults,
+): string {
   return outlinePolygons(g, stroke, defaults)
-    .map((poly) => poly.map((p, i) => `${i ? "L" : "M"}${fmt(p.x)},${fmt(p.y)}`).join(" ") + "Z")
+    .map(
+      (poly) =>
+        poly
+          .map((p, i) => `${i ? "L" : "M"}${fmt(p.x)},${fmt(p.y)}`)
+          .join(" ") + "Z",
+    )
     .join(" ");
 }
 
 export function glyphBounds(g: Glyph, defaults?: BrushDefaults) {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const stroke of g.strokes) {
     if (!stroke.visible) continue;
     for (const polygon of outlinePolygons(g, stroke, defaults))

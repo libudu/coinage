@@ -6,12 +6,18 @@ import type {
   RefObject,
   SetStateAction,
 } from "react";
-import { clamp, controls, distance } from "../../core/geometry";
+import { clamp, distance, strokeControls } from "../../core/geometry";
 import { newStroke, uid } from "../../core/model";
 import type { Point, Project, Stroke } from "../../core/model";
+import { reconcileStrokeGeometry } from "../../core/strokeEditing";
 import type { EditorCanvasProps } from "./canvasTypes";
 import { selectionLocked, translateNodes } from "./nodeSelection";
-import { useActiveGlyph, useProject, useProjectActions, useProjectApi } from "../project/useProject";
+import {
+  useActiveGlyph,
+  useProject,
+  useProjectActions,
+  useProjectApi,
+} from "../project/useProject";
 import type { TransactionId } from "../project/projectStore";
 
 type Drag = {
@@ -30,10 +36,7 @@ type Drag = {
   sign?: number;
 };
 
-type Options = Pick<
-  EditorCanvasProps,
-  "toast"
-> & {
+type Options = Pick<EditorCanvasProps, "toast"> & {
   space: boolean;
   preview: boolean;
   pan: Point;
@@ -56,25 +59,39 @@ export function useCanvasInteraction({
   const nodeIds = useProject((s) => s.session.nodeIds);
   const strokeId = useProject((s) => s.session.strokeId);
   const tool = useProject((s) => s.session.tool);
-  const { update, select, selectNodes, beginTransaction, commitTransaction, cancelTransaction } = useProjectActions();
+  const {
+    update,
+    select,
+    selectNodes,
+    beginTransaction,
+    commitTransaction,
+    cancelTransaction,
+  } = useProjectActions();
   const drag = useRef<Drag | null>(null);
   useEffect(() => {
     const finish = () => {
-      if (drag.current?.transaction) commitTransaction(drag.current.transaction);
+      if (drag.current?.transaction)
+        commitTransaction(drag.current.transaction);
       drag.current = null;
     };
     window.addEventListener("blur", finish);
-    return () => { window.removeEventListener("blur", finish); finish(); };
+    return () => {
+      window.removeEventListener("blur", finish);
+      finish();
+    };
   }, [commitTransaction]);
   const penTail = useRef<string | null>(null);
   const penStroke = useRef<string | null>(null);
   const stroke = glyph.strokes.find((s) => s.id === strokeId);
   const nodeLocked = (id: string) =>
     glyph.strokes.some((s) => s.locked && s.nodes.includes(id));
-  const strokeForNode = (id: string | undefined) => id
-    ? (stroke?.visible && stroke.nodes.includes(id) ? stroke
-      : glyph.strokes.find((s) => s.visible && s.nodes.includes(id)))?.id ?? null
-    : null;
+  const strokeForNode = (id: string | undefined) =>
+    id
+      ? ((stroke?.visible && stroke.nodes.includes(id)
+          ? stroke
+          : glyph.strokes.find((s) => s.visible && s.nodes.includes(id))
+        )?.id ?? null)
+      : null;
 
   const finishPen = () => {
     penTail.current = null;
@@ -92,7 +109,12 @@ export function useCanvasInteraction({
   const start = (e: PE, kind: Drag["kind"], id?: string, sign?: number) => {
     let movingIds: string[] | undefined;
     let deselectOnClick = false;
-    if (drag.current || e.isPrimary === false || (e.button !== 0 && e.button !== 1)) return;
+    if (
+      drag.current ||
+      e.isPrimary === false ||
+      (e.button !== 0 && e.button !== 1)
+    )
+      return;
     e.preventDefault();
     e.stopPropagation();
     if (space || tool === "hand" || e.button === 1) kind = "pan";
@@ -171,13 +193,29 @@ export function useCanvasInteraction({
       return;
     }
     const transaction = beginTransaction();
-    drag.current = { transaction, branch, pointerId: e.pointerId, kind, id, nodeIds: movingIds, deselectOnClick, sign, start: p, origin, before, moved: false };
+    drag.current = {
+      transaction,
+      branch,
+      pointerId: e.pointerId,
+      kind,
+      id,
+      nodeIds: movingIds,
+      deselectOnClick,
+      sign,
+      start: p,
+      origin,
+      before,
+      moved: false,
+    };
     stage.current?.setPointerCapture(e.pointerId);
   };
   const move = (e: PE) => {
     const d = drag.current;
     if (!d || e.pointerId !== d.pointerId) return;
-    if (d.transaction && api.getState().transaction?.id !== d.transaction) { drag.current = null; return; }
+    if (d.transaction && api.getState().transaction?.id !== d.transaction) {
+      drag.current = null;
+      return;
+    }
     if (d.kind === "pan") {
       setPan({
         x: d.pan!.x + e.clientX - d.start.x,
@@ -202,10 +240,17 @@ export function useCanvasInteraction({
     if (d.kind === "node")
       update((g) => {
         const old = d.before.glyphs.find((g) => g.id === glyph.id)!;
-        translateNodes(g, d.nodeIds!, { x: p.x - d.start.x, y: p.y - d.start.y }, old);
+        translateNodes(
+          g,
+          d.nodeIds!,
+          { x: p.x - d.start.x, y: p.y - d.start.y },
+          old,
+        );
       }, d.transaction);
     if (d.kind === "branch") {
-      const created = !!api.getState().project.glyphs.find((g) => g.id === glyph.id)?.nodes[d.id!];
+      const created = !!api
+        .getState()
+        .project.glyphs.find((g) => g.id === glyph.id)?.nodes[d.id!];
       const atOrigin = distance(p, d.origin!) <= 1;
       update((g) => {
         if (atOrigin) {
@@ -216,23 +261,62 @@ export function useCanvasInteraction({
           return;
         }
         if (!g.nodes[d.id!]) {
-          g.nodes[d.id!] = { ...g.nodes[d.branch!.sourceId], id: d.id!, handle: undefined, handleIn: undefined };
-          g.strokes.push({ ...newStroke([d.branch!.sourceId, d.id!], g.strokes.length), id: d.branch!.strokeId });
+          g.nodes[d.id!] = {
+            ...g.nodes[d.branch!.sourceId],
+            id: d.id!,
+            handle: undefined,
+            handleIn: undefined,
+          };
+          g.strokes.push({
+            ...newStroke([d.branch!.sourceId, d.id!], g.strokes.length),
+            id: d.branch!.strokeId,
+          });
         }
         Object.assign(g.nodes[d.id!], p);
       }, d.transaction);
       if (atOrigin && created) {
-        const sourceStroke = d.before.glyphs.find((g) => g.id === glyph.id)?.strokes
-          .find((s) => s.visible && s.nodes.includes(d.branch!.sourceId));
+        const sourceStroke = d.before.glyphs
+          .find((g) => g.id === glyph.id)
+          ?.strokes.find(
+            (s) => s.visible && s.nodes.includes(d.branch!.sourceId),
+          );
         select(d.branch!.sourceId, sourceStroke?.id ?? null, d.transaction);
-      }
-      else if (!atOrigin && !created) select(d.id!, d.branch!.strokeId, d.transaction);
+      } else if (!atOrigin && !created)
+        select(d.id!, d.branch!.strokeId, d.transaction);
     }
-    if (d.kind === "handle")
+    if (d.kind === "handle") {
+      const current = api
+        .getState()
+        .project.glyphs.find((g) => g.id === glyph.id)!;
+      const origin = d.before.glyphs.find((g) => g.id === glyph.id)!;
       update((g) => {
+        // 使用起点控制柄，避免逐帧累积；回到按下位置时恢复完整几何。
+        g.nodes[d.id!].handle = origin.nodes[d.id!].handle;
+        g.nodes[d.id!].handleIn = origin.nodes[d.id!].handleIn;
+        if (p.x === d.start.x && p.y === d.start.y) {
+          reconcileStrokeGeometry(current, g, origin);
+          return;
+        }
         const n = g.nodes[d.id!],
           vector = { x: p.x - n.x, y: p.y - n.y },
           len = Math.hypot(vector.x, vector.y) || 1;
+        const path = origin.strokes.find((s) => s.id === strokeId);
+        const oppositeIndex =
+          path &&
+          (d.sign === -1
+            ? path.nodes.indexOf(n.id)
+            : path.nodes.lastIndexOf(n.id) - 1);
+        const oppositeControl =
+          path?.segments &&
+          oppositeIndex !== undefined &&
+          oppositeIndex >= 0 &&
+          oppositeIndex < path.nodes.length - 1
+            ? strokeControls(
+                path.nodes.map((id) => origin.nodes[id]),
+                path,
+                oppositeIndex,
+              )[d.sign === -1 ? 0 : 1]
+            : undefined;
         if (n.mode === "symmetric") {
           n.handle = {
             x: vector.x * (d.sign || 1),
@@ -240,25 +324,34 @@ export function useCanvasInteraction({
           };
           n.handleIn = undefined;
         } else if (d.sign === -1) {
-          const opposite = n.handle ? Math.hypot(n.handle.x, n.handle.y) : 50;
+          const opposite = oppositeControl
+            ? distance(n, oppositeControl)
+            : n.handle
+              ? Math.hypot(n.handle.x, n.handle.y)
+              : 50;
           n.handleIn = vector;
           n.handle = {
             x: (-vector.x / len) * opposite,
             y: (-vector.y / len) * opposite,
           };
         } else {
-          const opposite = n.handleIn
-            ? Math.hypot(n.handleIn.x, n.handleIn.y)
-            : n.handle
-              ? Math.hypot(n.handle.x, n.handle.y)
-              : 50;
+          const opposite = oppositeControl
+            ? distance(n, oppositeControl)
+            : n.handleIn
+              ? Math.hypot(n.handleIn.x, n.handleIn.y)
+              : n.handle
+                ? Math.hypot(n.handle.x, n.handle.y)
+                : 50;
           n.handle = vector;
           n.handleIn = {
             x: (-vector.x / len) * opposite,
             y: (-vector.y / len) * opposite,
           };
         }
+        // 节点原值可能与目标相同，但当前边上的拆分控制柄仍需更新。
+        reconcileStrokeGeometry(current, g, origin, [n.id]);
       }, d.transaction);
+    }
     if (d.kind === "stroke")
       update((g) => {
         const s = g.strokes.find((s) => s.id === d.id)!,
@@ -308,10 +401,16 @@ export function useCanvasInteraction({
     if (!d) return;
     if (d.transaction) cancelTransaction(d.transaction);
     else if (d.pan) setPan(d.pan);
-    if (stage.current?.hasPointerCapture(d.pointerId)) stage.current.releasePointerCapture(d.pointerId);
+    if (stage.current?.hasPointerCapture(d.pointerId))
+      stage.current.releasePointerCapture(d.pointerId);
   };
   const canvasDown = (e: PE) => {
-    if (drag.current || e.isPrimary === false || (e.button !== 0 && e.button !== 1)) return;
+    if (
+      drag.current ||
+      e.isPrimary === false ||
+      (e.button !== 0 && e.button !== 1)
+    )
+      return;
     if (space || tool === "hand" || e.button === 1) {
       start(e, "pan");
       return;
@@ -364,8 +463,9 @@ export function useCanvasInteraction({
     for (let i = 0; i < s.nodes.length - 1; i++) {
       const a = glyph.nodes[s.nodes[i]],
         b = glyph.nodes[s.nodes[i + 1]],
-        [c, d] = controls(
+        [c, d] = strokeControls(
           s.nodes.map((n) => glyph.nodes[n]),
+          s,
           i,
         );
       for (let j = 0; j <= 20; j++) {
@@ -403,6 +503,15 @@ export function useCanvasInteraction({
     select(id, s.id);
   };
   return {
-    start, move, end, cancelDrag, canvasDown, insert, drag, penTail, nodeLocked, finishPen,
+    start,
+    move,
+    end,
+    cancelDrag,
+    canvasDown,
+    insert,
+    drag,
+    penTail,
+    nodeLocked,
+    finishPen,
   };
 }
