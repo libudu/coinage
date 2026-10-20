@@ -38,3 +38,13 @@ pnpm run build
 ```
 
 打包后分发项目根目录的 `Coinage v<版本号>.zip` 即可。
+
+## 代码格式
+
+使用项目内安装的 Prettier，配置见 `.prettierrc.json`。每轮修改后只格式化本次改动的文件：
+
+```bash
+pnpm exec prettier --write <文件路径列表>
+```
+
+`pnpm run format` 格式化全项目，`pnpm run format:check` 检查全项目格式。构建产物、手稿、原始素材及锁文件通过 `.prettierignore` 排除。

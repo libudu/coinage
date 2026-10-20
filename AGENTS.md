@@ -92,6 +92,7 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 ### 代码与样式
 
 - 使用 pnpm，版本见 `package.json#packageManager`；只维护 `pnpm-lock.yaml`，不生成或提交 `package-lock.json`。文档命令也使用 pnpm。
+- 格式统一使用项目内安装的 Prettier 和根目录 `.prettierrc.json`。每轮修改完成后，必须对本次新增或修改且受 Prettier 支持、未被 `.prettierignore` 忽略的文件执行 `pnpm exec prettier --write <文件路径列表>`，格式化后再执行必要检查；不要顺带格式化无关文件。`pnpm run format` 和 `pnpm run format:check` 分别用于显式的全项目格式化与检查。
 - 使用 TypeScript、显式相对导入和 `import type`；说明性注释用中文。目录变更同步更新测试、README 和本索引。
 - 业务代码放对应 `features`，复用控件和工具放 `shared`，`app` 负责组装，`core` 不依赖 React。核心模块按职责直接导入，不通过 `model` 汇总。
 - 常规样式使用 JSX Tailwind 类。自定义 CSS 就近放置、显式导入并限定类名范围；`src/styles` 仅放全局规则，重置放 `base` 层。
