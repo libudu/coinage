@@ -1,3 +1,4 @@
+import { useToast } from "../../shared/components/Toast";
 import { useEffect, useRef } from "react";
 import { useProjectActions, useProjectApi } from "../project/useProject";
 import { activeGlyph } from "../project/projectStore";
@@ -6,20 +7,17 @@ import { selectableNodeIds } from "./nodeSelection";
 
 const arrowKeys = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"]);
 type Options = {
-  toast: (message: string) => void;
-  importing: boolean;
-  shortcuts: boolean;
-  setShortcuts: (open: boolean) => void;
+  blocked: boolean;
+  showShortcuts: () => void;
   confirmRemoveGlyph: (id: string) => void;
 };
 
 export function useEditorCommands({
-  toast,
-  importing,
-  shortcuts,
-  setShortcuts,
+  blocked,
+  showShortcuts,
   confirmRemoveGlyph,
 }: Options) {
+  const toast = useToast();
   const api = useProjectApi();
   const actions = useProjectActions();
   const nudge = useRef<{ id: TransactionId; key: string } | null>(null);
@@ -34,7 +32,7 @@ export function useEditorCommands({
       confirmRemoveGlyph(activeGlyph(state).id);
       return;
     }
-    if (actions.removeSelection()) toast("已删除，可撤销");
+    if (actions.removeSelection()) toast("已删除，可撤销", { tone: "success" });
     else toast("请先解锁笔画");
   };
   const duplicate = () => {
@@ -44,11 +42,7 @@ export function useEditorCommands({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!arrowKeys.has(e.key)) finish();
-      if (importing) return;
-      if (shortcuts) {
-        if (e.key === "Escape") setShortcuts(false);
-        return;
-      }
+      if (blocked) return;
       if (
         (e.target as HTMLElement).closest(
           "input, textarea, select, [contenteditable]",
@@ -72,7 +66,7 @@ export function useEditorCommands({
         if (nodeIds.length || strokeId) remove();
       }
       if (e.key === "Escape") actions.select(null, null);
-      if (e.key === "?") setShortcuts(true);
+      if (e.key === "?") showShortcuts();
       if (nodeIds.length && !e.altKey && arrowKeys.has(e.key)) {
         e.preventDefault();
         const key = `${glyph.id}:${nodeIds.join(",")}`;
@@ -97,13 +91,13 @@ export function useEditorCommands({
       if (arrowKeys.has(e.key)) finish();
     };
     window.addEventListener("keydown", handler);
-    window.addEventListener("keyup", up);
+    window.addEventListener("keyup", up, true);
     window.addEventListener("blur", finish);
     window.addEventListener("pointerdown", finish, true);
     window.addEventListener("focusin", finish);
     return () => {
       window.removeEventListener("keydown", handler);
-      window.removeEventListener("keyup", up);
+      window.removeEventListener("keyup", up, true);
       window.removeEventListener("blur", finish);
       window.removeEventListener("pointerdown", finish, true);
       window.removeEventListener("focusin", finish);

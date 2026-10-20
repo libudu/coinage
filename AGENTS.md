@@ -11,8 +11,7 @@ src/
 ├── main.tsx                    # React 入口与全局样式加载
 ├── app/
 │   ├── App.tsx                # 页面切换、工作台组装、菜单与弹窗状态
-│   ├── AppNavigation.tsx      # 左侧字库、造字与特效导航
-│   └── App.css                # 提示动画关键帧，由 App.tsx 导入
+│   └── AppNavigation.tsx      # 左侧字库、造字与特效导航
 ├── core/
 │   ├── model.ts               # 数据类型、ID 与空字形/笔画工厂
 │   ├── geometry.ts            # 几何工具、中心线、连接关系与填充轮廓
@@ -40,9 +39,12 @@ src/
 │   │   ├── GlyphExport.tsx     # 属性栏导出按钮与格式菜单状态
 │   │   ├── EditorContextMenu.tsx # 字符、笔画与节点操作右键菜单
 │   │   ├── GlyphBasicInfoDialog.tsx # 字符对应汉语与描述编辑弹窗
+│   │   ├── ShortcutsDialog.tsx  # 快捷键帮助弹窗
+│   │   ├── useContextMenuActions.ts # 右键菜单的字形、笔画和节点编辑动作
 │   │   ├── GlyphDeleteDialog.tsx # 字符删除二次确认弹窗
 │   │   ├── BrushControls.tsx   # 全局起收笔与快捷预设
 │   │   ├── BrushTuning.tsx     # 折叠式笔锋长度、张开调节
+│   │   ├── TransactionalInput.tsx # 手稿文本与数值输入的事务、撤销和目标隔离
 │   │   ├── TransactionalRange.tsx # 手稿滑块的指针、键盘与事务边界
 │   │   └── GlyphPreview.tsx    # 字形缩略预览
 │   ├── tracing/
@@ -62,11 +64,21 @@ src/
 │   └── index.ts               # 静态托管、端口与重复启动检查、打开浏览器
 ├── shared/
 │   ├── components/
+│   │   ├── Button.tsx         # 标准、主操作、危险和无外观按钮
+│   │   ├── Modal.tsx          # 原生弹窗、焦点管理和统一关闭行为
+│   │   ├── Menu.tsx           # 下拉与右键菜单、键盘导航和焦点恢复
+│   │   ├── Toast.tsx          # 独立提示状态、类型与计时
+│   │   ├── Toast.css          # 提示入场动画
 │   │   ├── Icon.tsx           # 图标
-│   │   ├── controls.tsx       # 通用控件与共享按钮/分段选择状态类
+│   │   ├── Input.tsx          # 文本输入外观与原生属性、事件和 ref 透传
+│   │   ├── NumberInput.tsx    # 即时数值输入、草稿确认与取消
+│   │   ├── NumberField.tsx    # 带标签和单位的数值输入，无业务默认边界
+│   │   ├── SegmentedControl.tsx # 分段选择、混合值、禁用和键盘导航
+│   │   ├── controls.tsx       # 图标按钮与属性分区
 │   │   ├── RangeInput.tsx     # 标准滑块与扩大拖动区域的行式滑块
 │   │   └── RangeInput.css     # 带专属类名的浏览器滑块伪元素
 │   └── utils/
+│       ├── keyboard.ts         # 弹层共用的保存快捷键判断
 │       ├── files.ts            # 文件下载与文件名处理
 │       └── localSettings.ts    # 前端 localStorage 配置、默认值、校验与安全读写
 ├── styles/
@@ -85,6 +97,8 @@ tests/projectAutosave.test.ts   # 保存触发、重试、冲突与过期响应�
 tests/editorTransactions.test.ts # jsdom 组件事件与事务边界回归测试
 tests/canvasGeometry.test.ts     # 插点后的实际指针拖动、控制柄、往返与历史回归测试
 tests/workspaceNavigation.test.ts # 字库预览、基本信息、页面切换与快捷键隔离测试
+tests/formControls.test.ts       # 文本、数值、分段选择与手稿输入事务回归测试
+tests/sharedComponents.test.ts   # 公共弹窗、菜单、按钮、提示及导出反馈回归测试
 tests/localSettings.test.ts      # 前端配置默认值、持久化、无效数据与存储异常测试
 tests/support/domLoader.mjs     # 组件测试中的样式导入适配
 tests/package.smoke.ts          # 解压分发 ZIP 后验证便携 Node、重启与端口
@@ -105,6 +119,8 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 - 业务代码放对应 `features`，复用控件和工具放 `shared`，`app` 负责组装，`core` 不依赖 React。核心模块按职责直接导入，不通过 `model` 汇总。
 - 常规样式使用 JSX Tailwind 类。自定义 CSS 就近放置、显式导入并限定类名范围；`src/styles` 仅放全局规则，重置放 `base` 层。
 - 响应式沿用 `wide`（≥1600px）、`laptop`（≤1150px）、`tablet`（≤900px）、`compact`（≤760px）、`phone`（≤490px），保留包含边界和覆盖顺序。
+- 弹窗、菜单和操作按钮复用 `shared/components` 中的 `Modal`、`Menu` 和 `Button`；提示通过独立 `ToastProvider` / `useToast` 发出。弹层隔离编辑快捷键，保留 Ctrl+S；业务编辑动作留在对应 feature。业务按钮（含导航、列表、分段选择与启动失败重试）统一用 `Button`，自定义外观用 `bare` 变体；仅公共组件内部直接渲染原生 button。弹层隔离不能阻断按键释放的清理，中文输入法组合键不触发关闭。
+- 文本输入复用 `Input`，数值输入复用 `NumberInput` / `NumberField`，互斥选项复用 `SegmentedControl`；业务范围由调用方显式传入。共享控件不依赖手稿 store 或几何模块；手稿文本、坐标与宽度输入通过 `TransactionalInput` 中的 editor 适配器管理事务和过期事件，局部表单和偏好输入保留局部状态。
 - 滑块统一用 `RangeInput`，笔锋微调用 `row` 变体；保留原生属性、ref 和事件透传，不用全局 range 选择器设置业务外观。
 
 ### 状态与编辑

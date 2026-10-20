@@ -1,3 +1,5 @@
+import { Button } from "../../shared/components/Button";
+import { useToast } from "../../shared/components/Toast";
 import "./EditorCanvas.css";
 import { memo, useEffect, useRef, useState } from "react";
 import { clamp } from "../../core/geometry";
@@ -16,11 +18,11 @@ import {
 
 export function EditorCanvas({
   importFile,
-  toast,
   modalOpen,
   showShortcuts,
   openContextMenu,
 }: EditorCanvasProps) {
+  const toast = useToast();
   const glyph = useActiveGlyph();
   const nodeIds = useProject((s) => s.session.nodeIds);
   const nodeId = nodeIds.at(-1) ?? null;
@@ -108,6 +110,14 @@ export function EditorCanvas({
         e.metaKey
       )
         return;
+      // 控件聚焦时保留原生激活和 Tab 导航，画布快捷键只处理其余按键。
+      if (
+        (e.key === "Tab" || e.key === "Enter" || e.code === "Space") &&
+        (e.target as HTMLElement).closest(
+          "button, a[href], summary, [role='button']",
+        )
+      )
+        return;
       if (e.code === "Space") {
         e.preventDefault();
         setSpace(true);
@@ -140,11 +150,12 @@ export function EditorCanvas({
       },
       blur = () => setSpace(false);
     window.addEventListener("keydown", down);
-    window.addEventListener("keyup", up);
+    // 弹层会隔离冒泡事件，松开空格时仍须解除临时平移。
+    window.addEventListener("keyup", up, true);
     window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("keydown", down);
-      window.removeEventListener("keyup", up);
+      window.removeEventListener("keyup", up, true);
       window.removeEventListener("blur", blur);
     };
   }, [modalOpen, setTool]);
@@ -165,14 +176,15 @@ export function EditorCanvas({
           [&_.icon-button>svg]:w-[17px] [&_.icon-button>svg]:h-[17px] tablet:gap-[1px]
           phone:[&_.mini-divider]:hidden phone:[&_.icon-button]:w-[25px]"
         >
-          <button
+          <Button
+            variant="bare"
             className={`view-button ${preview ? "active" : ""} gap-[6px] items-center text-[13px] text-[#7a8671] py-[6px] px-[9px]
               rounded-[4px] flex phone:p-[5px] [&.active]:bg-[#e7eddf] [&.active]:text-[#385e3d]`}
             onClick={() => setPreview((v) => !v)}
           >
             <Icon name="eye" size={18} />
             预览
-          </button>
+          </Button>
           <span className="mini-divider w-[1px] h-[17px] bg-[#dfe5d6] my-0 mx-[5px]" />
           <IconButton
             icon="grid"
@@ -419,12 +431,13 @@ export function EditorCanvas({
               title="缩小"
               onClick={() => setZoom((z) => clamp(z / 1.2, 0.25, 4))}
             />
-            <button
+            <Button
+              variant="bare"
               className="zoom-value text-[#77866b] min-w-[43px] h-[26px] tablet:min-w-[35px] [font:12px_ui-monospace,monospace]"
               onClick={reset}
             >
               {Math.round(zoom * 100)}%
-            </button>
+            </Button>
             <IconButton
               icon="plus"
               title="放大"

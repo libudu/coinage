@@ -4,7 +4,6 @@ import type { StrokeEdge } from "./strokeEdges";
 export type Tool = "select" | "pen" | "branch" | "hand";
 export type EditorCanvasProps = {
   importFile: (file: File) => void;
-  toast: (message: string) => void;
   modalOpen: boolean;
   showShortcuts: () => void;
   openContextMenu: (

@@ -10,7 +10,7 @@ import { clamp, distance, strokeControls } from "../../core/geometry";
 import { newStroke, uid } from "../../core/model";
 import type { Point, Project, Stroke } from "../../core/model";
 import { reconcileStrokeGeometry } from "../../core/strokeEditing";
-import type { EditorCanvasProps } from "./canvasTypes";
+import type { Notify } from "../../shared/components/Toast";
 import { selectionLocked, translateNodes } from "./nodeSelection";
 import {
   useActiveGlyph,
@@ -36,7 +36,8 @@ type Drag = {
   sign?: number;
 };
 
-type Options = Pick<EditorCanvasProps, "toast"> & {
+type Options = {
+  toast: Notify;
   space: boolean;
   preview: boolean;
   pan: Point;

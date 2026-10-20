@@ -49,3 +49,9 @@ pnpm exec prettier --write <文件路径列表>
 ```
 
 `pnpm run format` 格式化全项目，`pnpm run format:check` 检查全项目格式。构建产物、手稿、原始素材及锁文件通过 `.prettierignore` 排除。
+
+## 公共界面组件
+
+`src/shared/components` 提供 `Modal`、`Menu`、`Button` 和 `ToastProvider` / `useToast`。弹窗统一使用原生 dialog 管理焦点与背景交互；菜单支持方向键、Home / End、Esc 和 Tab，并隔离背景编辑快捷键。Ctrl+S 在弹窗及菜单内仍可保存。提示区分成功、错误和普通消息，同文案重复触发会重新计时；业务表单与编辑命令保留在各 feature。导航、列表、属性、笔锋及启动失败重试按钮也复用公共按钮，保留各自外观。弹层内释放空格会解除临时平移，中文输入法取消组合输入不会关闭弹窗。
+
+文本输入使用 `Input`，数值输入使用 `NumberInput` / `NumberField`，分段选择使用 `SegmentedControl`。数值支持即时更新或失焦 / Enter 提交草稿，Escape 取消；分段选择保留原有按钮和 Tab 操作，并支持方向键与 Home / End。业务取值、边界和预览内容由调用方提供，手稿输入通过 editor 的事务适配器合并连续编辑历史，公共控件不依赖手稿状态。文件、颜色和单处使用的复选输入保留原生控件。

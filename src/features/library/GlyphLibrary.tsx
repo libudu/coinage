@@ -1,3 +1,5 @@
+import { Input } from "../../shared/components/Input";
+import { Button } from "../../shared/components/Button";
 import { useMemo, useState } from "react";
 import type { Glyph, Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
@@ -56,15 +58,16 @@ export function GlyphLibrary({ onEdit, openGlyphContextMenu }: Props) {
           className="border-b border-solid border-[var(--border)] pb-[32px]"
         >
           <div className="relative">
-            <input
+            <Input
+              variant="sentence"
               type="text"
               aria-label="造句预览"
               placeholder="输入一句话"
               value={sentence}
               onChange={(event) => setSentence(event.target.value)}
-              className="h-[48px] w-full rounded-[8px] border border-solid border-[#dfe4d7] bg-[#fcfdf9] pl-[16px] pr-[52px] text-[14px] placeholder:text-[#a0a69b]"
             />
-            <button
+            <Button
+              variant="bare"
               type="button"
               aria-label="显示字格"
               aria-pressed={showGrid}
@@ -78,7 +81,7 @@ export function GlyphLibrary({ onEdit, openGlyphContextMenu }: Props) {
                 ${showGrid ? "bg-[#e7eddf] text-[#385e3d] hover:bg-[#dce7d3]" : "text-[#7a8671] hover:bg-[#edf1e6]"}`}
             >
               <Icon name="grid" size={18} />
-            </button>
+            </Button>
           </div>
           {preview.length > 0 && (
             <div
@@ -104,7 +107,8 @@ export function GlyphLibrary({ onEdit, openGlyphContextMenu }: Props) {
           className="grid grid-cols-[repeat(auto-fill,minmax(112px,1fr))] gap-[16px] pt-[32px] compact:grid-cols-[repeat(auto-fill,minmax(88px,1fr))] compact:gap-[10px]"
         >
           {glyphs.map((glyph, index) => (
-            <button
+            <Button
+              variant="bare"
               key={glyph.id}
               type="button"
               aria-label={`编辑 ${glyph.name || `字符 ${String(index + 1).padStart(2, "0")}`}`}
@@ -138,7 +142,7 @@ export function GlyphLibrary({ onEdit, openGlyphContextMenu }: Props) {
                   )}
                 </span>
               )}
-            </button>
+            </Button>
           ))}
         </section>
       </div>
