@@ -18,6 +18,7 @@ src/
 │   ├── strokeEditing.ts       # 边控制柄与普通编辑、拓扑变化的同步
 │   ├── svg.ts                 # SVG 文档输出与 XML 转义
 │   ├── validation.ts          # 手稿格式与节点引用校验
+│   ├── importSettings.ts      # 导入参数、裁剪偏移默认值与前后端校验
 │   ├── projectPatch.ts        # 按 ID 和字段生成、校验与合并增量补丁
 │   ├── demo.ts                # 初始示例手稿
 │   └── brush.ts               # 笔锋预设、全局配置与端部轮廓
@@ -50,7 +51,7 @@ src/
 │   ├── tracing/
 │   │   ├── ImportDialog.tsx    # 图片导入与识别参数预览
 │   │   ├── trace.ts            # 前景分离、骨架提取、路径简化与图片读取
-│   │   ├── traceSettings.ts    # 导入参数的本地记忆与校验读取
+│   │   ├── traceSettings.ts    # 后端导入参数读取与串行保存
 │   │   ├── createTraceWorker.ts # 描摹 Worker 工厂
 │   │   └── trace.worker.ts     # 后台转换入口
 │   └── project/
@@ -65,6 +66,7 @@ src/
 ├── shared/
 │   ├── components/
 │   │   ├── Button.tsx         # 标准、主操作、危险和无外观按钮
+│   │   ├── ArtboardGrid.tsx   # 编辑与导入预览共用的画布格线
 │   │   ├── Modal.tsx          # 原生弹窗、焦点管理和统一关闭行为
 │   │   ├── Menu.tsx           # 下拉与右键菜单、键盘导航和焦点恢复
 │   │   ├── Toast.tsx          # 独立提示状态、类型与计时
@@ -96,6 +98,9 @@ tests/projectStore.test.ts      # 状态、事务、历史、选择与锁定测�
 tests/projectAutosave.test.ts   # 保存触发、重试、冲突与过期响应测试
 tests/editorTransactions.test.ts # jsdom 组件事件与事务边界回归测试
 tests/canvasGeometry.test.ts     # 插点后的实际指针拖动、控制柄、往返与历史回归测试
+tests/canvasWheel.test.ts        # 滚轮粗细、事务、锁定与画布视图回归测试
+tests/importPreview.test.ts      # 导入粗细实时预览、识别隔离与原图对齐测试
+tests/importSettings.test.ts     # 导入参数校验、后端读写队列与重试测试
 tests/workspaceNavigation.test.ts # 字库预览、基本信息、页面切换与快捷键隔离测试
 tests/formControls.test.ts       # 文本、数值、分段选择与手稿输入事务回归测试
 tests/sharedComponents.test.ts   # 公共弹窗、菜单、按钮、提示及导出反馈回归测试
@@ -141,6 +146,7 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 - 保留重试、离页保护和过期响应检查；并发 flush 共享保存结果，`projectStorage` 负责串行队列和 revision。失败提示持续到保存成功，撤销回旧快照不能视为已保存。
 - 先从 `/api/project` 加载再挂载编辑器；读取失败禁止用示例覆盖，文件不存在时才创建初始手稿，不读取浏览器手稿存储。
 - 前端偏好通过 `shared/utils/localSettings.ts` 统一存入 `coinage.settings`，与手稿和操作历史分离；读取须校验并提供默认值，存储异常不阻断界面。造句字格默认开启，关闭时仅隐藏成功匹配字符的字格。
+- 图片导入参数通过 `/api/import-settings` 保存在后端 `data/import-settings.json`，独立于手稿；先加载再编辑，读取失败禁止默认值覆盖，写入串行并采用临时文件原子替换。默认粗细为 24 px；边缘裁剪使用单条百分比滑条，默认 0，从补齐短边的居中正方形向内裁剪，X/Y 偏移使用 -100–100 px 单端滑条；笔画和原图共用受边界约束的整体位移。
 - 软件尚未发布，仅支持当前数据结构，不增加历史格式迁移或兼容分支；格式变更同步调整类型、校验和测试。`Project` 不包含名称字段，字符与笔画名称仍保留。
 - 首次创建文件使用 PUT；后续基于已确认快照生成 PATCH，按字符与笔画 ID 定位、独立提交顺序，仅发送变化字段，未变化原图不得重传；无变化不请求。响应不明确时保留同一请求及 requestId，先确认基线，再保存后续修改；409 后停止覆盖。
 - 服务端串行校验 revision；仅同一请求、相同内容且磁盘仍为该次结果时确认重复 PATCH。合并后校验完整手稿和 64 MB 上限，再原子落盘。

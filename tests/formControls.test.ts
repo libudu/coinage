@@ -43,6 +43,7 @@ async function render(t: TestContext, content: ReactNode) {
   });
   return { container, root };
 }
+
 async function editor(
   t: TestContext,
   Component: ComponentType = () =>

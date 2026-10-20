@@ -17,7 +17,7 @@ export function AddGlyphMenu({ addGlyph, importGlyph }: Props) {
           variant="bare"
           aria-label="新建字符"
           title="新建字符"
-          className="flex items-center justify-center w-[28px] h-[28px] rounded-[6px] border border-solid border-[#dfe4d7] bg-[#fcfdf9] text-[#798273] hover:bg-[#edf1e6] compact:w-[22px] compact:h-[22px]"
+          className="flex items-center justify-center w-[28px] h-[28px] rounded-[6px] border border-solid border-[#48603b] bg-[#587447] text-white shadow-[0_1px_3px_#344d3026] hover:bg-[#48623a] hover:border-[#3b5230] aria-expanded:bg-[#48623a] compact:w-[22px] compact:h-[22px]"
         >
           <Icon name="plus" size={16} />
         </Button>

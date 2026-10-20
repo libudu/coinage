@@ -2,15 +2,23 @@ import { SegmentedControl } from "../../shared/components/SegmentedControl";
 import { Button } from "../../shared/components/Button";
 import { Modal } from "../../shared/components/Modal";
 import { RangeInput } from "../../shared/components/RangeInput";
+import { ArtboardGrid } from "../../shared/components/ArtboardGrid";
 import { IconButton } from "../../shared/components/controls";
-import { useEffect, useId, useState } from "react";
-import { rasterize, traceOptionLimits } from "./trace";
-import type { Raster, TraceOptions } from "./trace";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { rasterize, resizeTrace } from "./trace";
+import type { Raster } from "./trace";
+import {
+  defaultTrace,
+  defaultImportSettings,
+  traceOptionLimits,
+  importSettingLimits,
+} from "../../core/importSettings";
+import type { ImportSettings, TraceOptions } from "../../core/importSettings";
 import type { Glyph, Point } from "../../core/model";
 import type { BrushDefaults } from "../../core/brush";
 import { glyphPath } from "../../core/geometry";
 import { createTraceWorker } from "./createTraceWorker";
-import { loadTraceOptions, saveTraceOptions } from "./traceSettings";
+import { loadImportSettings, saveImportSettings } from "./traceSettings";
 import { Icon } from "../../shared/components/Icon";
 
 function alignedReference(raster: Raster, offset: Point) {
@@ -38,7 +46,14 @@ export function ImportDialog({
   onImport: (g: Glyph) => void;
 }) {
   const titleId = useId();
-  const [options, setOptions] = useState<TraceOptions>(loadTraceOptions),
+  const [options, setOptions] = useState<ImportSettings>(() => ({
+      ...defaultImportSettings,
+    })),
+    [settingsReady, setSettingsReady] = useState(false),
+    [settingsError, setSettingsError] = useState(""),
+    [loadAttempt, setLoadAttempt] = useState(0),
+    [saveAttempt, setSaveAttempt] = useState(0),
+    [reference, setReference] = useState(""),
     [raster, setRaster] = useState<Raster | null>(null),
     [preview, setPreview] = useState<{
       glyph: Glyph;
@@ -48,17 +63,70 @@ export function ImportDialog({
     } | null>(null),
     [busy, setBusy] = useState(true),
     [error, setError] = useState("");
-  useEffect(() => saveTraceOptions(options), [options]);
+  const persistedSettings = useRef<ImportSettings | null>(null);
   useEffect(() => {
+    let alive = true;
+    loadImportSettings()
+      .then((settings) => {
+        if (!alive) return;
+        persistedSettings.current = settings;
+        setOptions(settings);
+        setSettingsReady(true);
+        setSettingsError("");
+      })
+      .catch(() => {
+        if (alive) setSettingsError("读取导入配置失败，请重试");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [loadAttempt]);
+  useEffect(() => {
+    if (!settingsReady || options === persistedSettings.current) return;
+    let alive = true;
+    saveImportSettings(options)
+      .then(() => {
+        persistedSettings.current = options;
+        if (alive) setSettingsError("");
+      })
+      .catch(() => {
+        if (alive) setSettingsError("保存导入配置失败，请重试");
+      });
+    return () => {
+      alive = false;
+    };
+  }, [options, settingsReady, saveAttempt]);
+  const traceOptions = useMemo<TraceOptions>(
+    () => ({
+      threshold: options.threshold,
+      simplify: options.simplify,
+      noise: options.noise,
+      polarity: options.polarity,
+      width: defaultTrace.width,
+    }),
+    [options.threshold, options.simplify, options.noise, options.polarity],
+  );
+  const resizedPreview = useMemo(
+    () =>
+      preview &&
+      resizeTrace(preview, preview.raster, options.width, brush, {
+        x: options.offsetX,
+        y: options.offsetY,
+      }),
+    [preview, options.width, options.offsetX, options.offsetY, brush],
+  );
+  useEffect(() => {
+    if (!settingsReady) return;
     let alive = true;
     setRaster(null);
     setPreview(null);
     setBusy(true);
     setError("");
-    rasterize(source.src)
+    rasterize(source.src, options.crop)
       .then((data) => {
         if (alive) {
           setRaster(data.raster);
+          setReference(data.reference);
         }
       })
       .catch((e) => {
@@ -70,13 +138,15 @@ export function ImportDialog({
     return () => {
       alive = false;
     };
-  }, [source]);
+  }, [source, settingsReady, options.crop]);
   useEffect(() => {
     if (!raster) return;
     setBusy(true);
     setError("");
     let worker: Worker | undefined;
+    let alive = true;
     const fail = (message: string) => {
+      if (!alive) return;
       setBusy(false);
       setPreview(null);
       setError(message);
@@ -86,9 +156,10 @@ export function ImportDialog({
       try {
         worker = createTraceWorker();
         worker.onmessage = (e) => {
+          if (!alive) return;
           if (e.data.error) fail(e.data.error);
           else {
-            setPreview({ ...e.data, options, raster });
+            setPreview({ ...e.data, options: traceOptions, raster });
             setBusy(false);
             worker?.terminate();
           }
@@ -96,7 +167,7 @@ export function ImportDialog({
         worker.onerror = () => fail("转换失败，请重试。");
         worker.postMessage({
           raster,
-          options,
+          options: traceOptions,
           brush,
           name: source.name.replace(/\.[^.]+$/, ""),
         });
@@ -105,22 +176,24 @@ export function ImportDialog({
       }
     }, 150);
     return () => {
+      alive = false;
       clearTimeout(timer);
       worker?.terminate();
     };
-  }, [raster, options, brush, source.name]);
+  }, [raster, traceOptions, brush, source.name]);
   const convert = () => {
     if (
       !raster ||
       busy ||
       !preview ||
-      preview.options !== options ||
+      !resizedPreview ||
+      preview.options !== traceOptions ||
       preview.raster !== raster
     )
       return;
     onImport({
-      ...preview.glyph,
-      reference: alignedReference(raster, preview.referenceOffset),
+      ...resizedPreview.glyph,
+      reference: alignedReference(raster, resizedPreview.referenceOffset),
     });
   };
   return (
@@ -146,7 +219,7 @@ export function ImportDialog({
           compact:[&_.trace-preview]:self-center phone:grid-cols-[1fr] phone:gap-[20px]"
         >
           <div
-            className="trace-preview bg-[#fbfbf8] border [border-style:solid] border-[#dfe5d5] rounded-[8px] overflow-hidden flex
+            className="trace-preview self-start bg-[#fbfbf8] border [border-style:solid] border-[#dfe5d5] rounded-[8px] overflow-hidden flex
             flex-col justify-between [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[340px]
             [&>svg]:object-contain [&>span]:block [&>span]:text-center [&>span]:py-[11px] [&>span]:px-[15px]
             [&>span]:text-[12px] [&>span]:text-[#859575] [&>span]:border-t [&>span]:[border-top-style:solid]
@@ -161,20 +234,52 @@ export function ImportDialog({
               aria-label="导入字形预览"
               aria-busy={busy}
             >
-              {preview && (
+              <rect width="640" height="640" fill="#fffefa" />
+              <ArtboardGrid />
+              {resizedPreview && reference && (
+                <image
+                  href={reference}
+                  width="640"
+                  height="640"
+                  x={
+                    (resizedPreview.referenceOffset.x * 640) /
+                    Math.max(preview!.raster.width, preview!.raster.height)
+                  }
+                  y={
+                    (resizedPreview.referenceOffset.y * 640) /
+                    Math.max(preview!.raster.width, preview!.raster.height)
+                  }
+                  opacity=".2"
+                  pointerEvents="none"
+                />
+              )}
+              {resizedPreview && (
                 <path
-                  d={glyphPath(preview.glyph, brush)}
-                  fill={preview.glyph.color}
+                  data-trace-artwork=""
+                  d={glyphPath(resizedPreview.glyph, brush)}
+                  fill={resizedPreview.glyph.color}
                   opacity={busy ? 0.4 : 1}
                 />
               )}
             </svg>
             <span>{source.name}</span>
           </div>
-          <div className="trace-controls py-[5px] px-0 phone:p-0">
-            <label className="field-title block text-[#77856a] text-[12px] mb-[10px]">
-              前景颜色
-            </label>
+          <fieldset
+            disabled={!settingsReady}
+            className="trace-controls m-0 min-w-0 border-0 py-[5px] pl-0 pr-[5px] max-h-[56dvh] overflow-y-auto phone:max-h-none phone:p-0"
+          >
+            <div className="flex items-center justify-between gap-[8px] mb-[7px]">
+              <span className="field-title text-[#77856a] text-[12px]">
+                前景颜色
+              </span>
+              <Button
+                variant="bare"
+                className="shrink-0 text-[11px] text-[#5a7446] underline underline-offset-2 hover:text-[#38572c]"
+                onClick={() => setOptions({ ...defaultImportSettings })}
+              >
+                恢复默认
+              </Button>
+            </div>
             <SegmentedControl
               label="前景颜色"
               value={options.polarity}
@@ -185,9 +290,9 @@ export function ImportDialog({
               onValueChange={(polarity) => setOptions({ ...options, polarity })}
             />
             <label
-              className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[26px] mx-0 mb-[15px]
+              className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[16px] mx-0 mb-[7px]
               [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[12px] [&>b]:font-medium
-              phone:mt-[20px]"
+              phone:mt-[14px]"
             >
               识别阈值 <b>{options.threshold}</b>
             </label>
@@ -201,9 +306,9 @@ export function ImportDialog({
               }
             />
             <label
-              className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[26px] mx-0 mb-[15px]
+              className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[16px] mx-0 mb-[7px]
               [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[12px] [&>b]:font-medium
-              phone:mt-[20px]"
+              phone:mt-[14px]"
             >
               路径简化 <b>{options.simplify.toFixed(1)}</b>
             </label>
@@ -218,9 +323,9 @@ export function ImportDialog({
               }
             />
             <label
-              className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[26px] mx-0 mb-[15px]
+              className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[16px] mx-0 mb-[7px]
               [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[12px] [&>b]:font-medium
-              phone:mt-[20px]"
+              phone:mt-[14px]"
             >
               去除杂点 <b>{options.noise}</b>
             </label>
@@ -234,34 +339,97 @@ export function ImportDialog({
               }
             />
             <label
-              className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[26px] mx-0 mb-[15px]
+              className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[16px] mx-0 mb-[7px]
               [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[12px] [&>b]:font-medium
-              phone:mt-[20px]"
+              phone:mt-[14px]"
             >
-              笔画粗细 <b>{options.thickness}%</b>
+              笔画粗细 <b>{options.width} px</b>
             </label>
             <RangeInput
               aria-label="笔画粗细"
-              min={traceOptionLimits.thickness.min}
-              max={traceOptionLimits.thickness.max}
-              step="5"
-              value={options.thickness}
+              min={traceOptionLimits.width.min}
+              max={traceOptionLimits.width.max}
+              step="1"
+              value={options.width}
               onChange={(e) =>
-                setOptions({ ...options, thickness: +e.target.value })
+                setOptions({ ...options, width: +e.target.value })
               }
             />
-            <label className="checkbox-label flex items-center gap-[8px] text-[12px] text-[#81936f] mt-[29px] [&_input]:accent-[#577344]">
-              <input
-                type="checkbox"
-                checked={options.colorOnly}
-                onChange={(e) =>
-                  setOptions({ ...options, colorOnly: e.target.checked })
+            <div className="mt-[16px] border-t border-[#e4e9dc] pt-[12px]">
+              <div className="flex items-center justify-between text-[12px] text-[#88967a]">
+                <span>边缘裁剪</span>
+                <span className="font-mono text-[#5a7446]">
+                  {options.crop}%
+                </span>
+              </div>
+              <RangeInput
+                variant="row"
+                aria-label="边缘裁剪"
+                min={importSettingLimits.crop.min}
+                max={importSettingLimits.crop.max}
+                step={1}
+                value={options.crop}
+                onChange={(event) =>
+                  setOptions((current) => ({
+                    ...current,
+                    crop: Number(event.target.value),
+                  }))
                 }
               />
-              只提取彩色笔画
-            </label>
-          </div>
+              <div className="mb-[6px] mt-[10px] text-[12px] text-[#77856a]">
+                整体偏移
+              </div>
+              {(
+                [
+                  ["offsetX", "X"],
+                  ["offsetY", "Y"],
+                ] as const
+              ).map(([key, label]) => (
+                <div key={key} className="mb-[6px]">
+                  <div className="flex items-center justify-between text-[12px] text-[#88967a]">
+                    <span>{label}</span>
+                    <span className="font-mono text-[#5a7446]">
+                      {options[key]} px
+                    </span>
+                  </div>
+                  <RangeInput
+                    variant="row"
+                    aria-label={`${label} 偏移`}
+                    min={importSettingLimits[key].min}
+                    max={importSettingLimits[key].max}
+                    step={1}
+                    value={options[key]}
+                    onChange={(event) =>
+                      setOptions((current) => ({
+                        ...current,
+                        [key]: Number(event.target.value),
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          </fieldset>
         </div>
+        {settingsError && (
+          <div
+            role="alert"
+            className="mt-[15px] flex items-center gap-[10px] text-[12px] text-[#a84d35]"
+          >
+            <span>{settingsError}</span>
+            <Button
+              variant="bare"
+              className="underline"
+              onClick={() =>
+                settingsReady
+                  ? setSaveAttempt((n) => n + 1)
+                  : setLoadAttempt((n) => n + 1)
+              }
+            >
+              重试
+            </Button>
+          </div>
+        )}
         {error && (
           <p
             className="form-error text-[12px] text-[#a84d35] mb-0"
@@ -282,7 +450,7 @@ export function ImportDialog({
               !raster ||
               busy ||
               !preview ||
-              preview.options !== options ||
+              preview.options !== traceOptions ||
               preview.raster !== raster
             }
           >

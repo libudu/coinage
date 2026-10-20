@@ -1,22 +1,37 @@
+import { defaultTrace } from "../src/core/importSettings";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { controls, glyphBounds, glyphPath, outlinePath, tipIsConnected } from "../src/core/geometry";
+import {
+  controls,
+  glyphBounds,
+  glyphPath,
+  outlinePath,
+  tipIsConnected,
+} from "../src/core/geometry";
 import { demoProject } from "../src/core/demo";
 import { emptyGlyph, newStroke } from "../src/core/model";
 import { exportSvg } from "../src/core/svg";
 import { isProject } from "../src/core/validation";
-import { defaultTrace, makeMask, traceRaster, traceRasterWithPlacement } from "../src/features/tracing/trace";
-import { loadTraceOptions, saveTraceOptions } from "../src/features/tracing/traceSettings";
+import {
+  makeMask,
+  traceRaster,
+  traceRasterWithPlacement,
+} from "../src/features/tracing/trace";
 import type { Raster } from "../src/features/tracing/trace";
 import type { Point, Project } from "../src/core/model";
-import { brushPresets, changeGlobalBrush, defaultBrush } from "../src/core/brush";
+import {
+  brushPresets,
+  changeGlobalBrush,
+  defaultBrush,
+} from "../src/core/brush";
 
 // 使用 SVG 默认的非零填充规则，检查实际填充轮廓。
 function pathCoverage(path: string): (point: Point) => boolean {
   const polygons = path.split("Z").map((subpath) =>
-    [...subpath.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)].map(
-      ([, x, y]) => ({ x: +x, y: +y }),
-    ),
+    [...subpath.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)].map(([, x, y]) => ({
+      x: +x,
+      y: +y,
+    })),
   );
   return (point) => {
     let winding = 0;
@@ -35,12 +50,16 @@ const containsPoint = (path: string, point: Point) => pathCoverage(path)(point);
 
 test("shared endpoints join like a continuous stroke for every cap and corner style", () => {
   const g = emptyGlyph("connected zigzag");
-  [[260, 50], [120, 190], [350, 290], [100, 360], [350, 500]].forEach(
-    ([x, y], i) => {
-      const id = String(i);
-      g.nodes[id] = { id, x, y, width: 40 + i * 4, mode: "corner" };
-    },
-  );
+  [
+    [260, 50],
+    [120, 190],
+    [350, 290],
+    [100, 360],
+    [350, 500],
+  ].forEach(([x, y], i) => {
+    const id = String(i);
+    g.nodes[id] = { id, x, y, width: 40 + i * 4, mode: "corner" };
+  });
   const continuous = newStroke(Object.keys(g.nodes), 0);
   for (const cap of ["butt", "round", "square"] as const) {
     for (const join of ["miter", "round", "bevel"] as const) {
@@ -57,7 +76,9 @@ test("shared endpoints join like a continuous stroke for every cap and corner st
         });
         const outlines = g.strokes.map((s) => pathCoverage(outlinePath(g, s)));
         const combined = pathCoverage(glyphPath(g));
-        const expected = pathCoverage(outlinePath({ ...g, strokes: [continuous] }, continuous));
+        const expected = pathCoverage(
+          outlinePath({ ...g, strokes: [continuous] }, continuous),
+        );
         for (let y = 20.37; y < 540; y += 5)
           for (let x = 40.37; x < 430; x += 5) {
             const p = { x, y };
@@ -110,7 +131,7 @@ function raster(
     }
   return { pixels, width: w, height: h };
 }
-test("straight strokes retain width and produce editable endpoints", () => {
+test("straight strokes use the chosen pixel width and produce editable endpoints", () => {
   const g = traceRaster(
     raster(120, 120, (x, y) => x >= 20 && x < 100 && y >= 50 && y < 70),
     defaultTrace,
@@ -119,57 +140,96 @@ test("straight strokes retain width and produce editable endpoints", () => {
   assert.equal(g.strokes.length, 1);
   assert.equal(g.strokes[0].nodes.length, 2);
   for (const n of Object.values(g.nodes))
-    assert.ok(n.width > 90 && n.width < 115);
+    assert.equal(n.width, defaultTrace.width);
   assert.ok(!/NaN|Infinity/.test(exportSvg(g)));
 });
 
-test("import thickness scales local widths while retaining relative geometry and shared nodes", () => {
-  const input = raster(180, 180, (x, y) =>
-    (x >= 28 && x < 36 && y >= 20 && y < 100) ||
-    (y >= 56 && y < 64 && x >= 12 && x < 110),
+test("import uses absolute pixel widths while retaining relative geometry and shared nodes", () => {
+  const input = raster(
+    180,
+    180,
+    (x, y) =>
+      (x >= 28 && x < 36 && y >= 20 && y < 100) ||
+      (y >= 56 && y < 64 && x >= 12 && x < 110),
   );
   const original = traceRasterWithPlacement(input, defaultTrace, "cross");
-  for (const thickness of [25, 50, 150, 250]) {
-    const result = traceRasterWithPlacement(input, { ...defaultTrace, thickness }, "cross");
-    const before = Object.values(original.glyph.nodes), after = Object.values(result.glyph.nodes);
+  for (const width of [1, 25, 50, 150, 200]) {
+    const result = traceRasterWithPlacement(
+      input,
+      { ...defaultTrace, width },
+      "cross",
+    );
+    const before = Object.values(original.glyph.nodes),
+      after = Object.values(result.glyph.nodes);
     assert.equal(after.length, before.length);
     assert.equal(result.glyph.strokes.length, original.glyph.strokes.length);
     after.forEach((node, i) => {
-      assert.equal(node.width, Math.max(2, Math.min(200, before[i].width * thickness / 100)));
-      assert.ok(Math.abs(node.x - after[0].x - (before[i].x - before[0].x)) < 1e-8);
-      assert.ok(Math.abs(node.y - after[0].y - (before[i].y - before[0].y)) < 1e-8);
-      assert.ok(Math.abs(node.x - result.referenceOffset.x * 640 / input.width
-        - (before[i].x - original.referenceOffset.x * 640 / input.width)) < 1e-8);
+      assert.equal(node.width, width);
+      assert.ok(
+        Math.abs(node.x - after[0].x - (before[i].x - before[0].x)) < 1e-8,
+      );
+      assert.ok(
+        Math.abs(node.y - after[0].y - (before[i].y - before[0].y)) < 1e-8,
+      );
+      assert.ok(
+        Math.abs(
+          node.x -
+            (result.referenceOffset.x * 640) / input.width -
+            (before[i].x - (original.referenceOffset.x * 640) / input.width),
+        ) < 1e-8,
+      );
     });
     const counts = new Map<string, number>();
-    result.glyph.strokes.flatMap((s) => s.nodes).forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
+    result.glyph.strokes
+      .flatMap((s) => s.nodes)
+      .forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
     assert.ok([...counts.values()].includes(4));
   }
 });
 
 test("import centers the combined outline, keeps separate strokes in place and aligns the reference", () => {
-  for (const [w, h] of [[180, 180], [220, 140], [140, 220]]) {
-    const input = raster(w, h, (x, y) =>
-      (x >= 15 && x < 100 && y >= 20 && y < 30) ||
-      (x >= 65 && x < 125 && y >= 65 && y < 83),
+  for (const [w, h] of [
+    [180, 180],
+    [220, 140],
+    [140, 220],
+  ]) {
+    const input = raster(
+      w,
+      h,
+      (x, y) =>
+        (x >= 15 && x < 100 && y >= 20 && y < 30) ||
+        (x >= 65 && x < 125 && y >= 65 && y < 83),
     );
     const brush = {
-      ...defaultBrush, startTip: "horizontal" as const,
+      ...defaultBrush,
+      startTip: "horizontal" as const,
       startBrush: { length: 180, spread: 160 },
     };
     for (const config of [defaultBrush, brush]) {
-      const { glyph: g, referenceOffset } = traceRasterWithPlacement(input, defaultTrace, "offset", config);
+      const { glyph: g, referenceOffset } = traceRasterWithPlacement(
+        input,
+        defaultTrace,
+        "offset",
+        config,
+      );
       assert.equal(g.strokes.length, 2);
       const bounds = glyphBounds(g, config)!;
       assert.ok(Math.abs((bounds.minX + bounds.maxX) / 2 - 320) < 1e-8);
       assert.ok(Math.abs((bounds.minY + bounds.maxY) / 2 - 320) < 1e-8);
       const nodes = Object.values(g.nodes);
-      assert.ok(Math.abs(nodes.reduce((sum, n) => sum + n.x, 0) / nodes.length - 320) > 5);
+      assert.ok(
+        Math.abs(nodes.reduce((sum, n) => sum + n.x, 0) / nodes.length - 320) >
+          5,
+      );
       const scale = 640 / Math.max(w, h);
       // 撤回原图的平移后，节点应重新落在源图的笔迹上。
       for (const node of nodes) {
-        const x = Math.round((node.x - (640 - w * scale) / 2) / scale - referenceOffset.x);
-        const y = Math.round((node.y - (640 - h * scale) / 2) / scale - referenceOffset.y);
+        const x = Math.round(
+          (node.x - (640 - w * scale) / 2) / scale - referenceOffset.x,
+        );
+        const y = Math.round(
+          (node.y - (640 - h * scale) / 2) / scale - referenceOffset.y,
+        );
         assert.equal(input.pixels[(y * w + x) * 4], 0);
       }
     }
@@ -179,37 +239,17 @@ test("import centers the combined outline, keeps separate strokes in place and a
 test("discarded noise does not affect import centering", () => {
   const shape = (x: number, y: number) => x > 20 && x < 110 && y > 25 && y < 40;
   const clean = traceRaster(raster(160, 160, shape), defaultTrace, "clean");
-  const noisy = traceRaster(raster(160, 160, (x, y) => shape(x, y) || (x === 150 && y === 150)), defaultTrace, "noise");
-  assert.deepEqual(Object.values(noisy.nodes).map(({ x, y, width }) => ({ x, y, width })),
-    Object.values(clean.nodes).map(({ x, y, width }) => ({ x, y, width })));
+  const noisy = traceRaster(
+    raster(160, 160, (x, y) => shape(x, y) || (x === 150 && y === 150)),
+    defaultTrace,
+    "noise",
+  );
+  assert.deepEqual(
+    Object.values(noisy.nodes).map(({ x, y, width }) => ({ x, y, width })),
+    Object.values(clean.nodes).map(({ x, y, width }) => ({ x, y, width })),
+  );
 });
 
-test("import options persist separately and missing fields use defaults", () => {
-  const values = new Map<string, string>();
-  const storage = {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => { values.set(key, value); },
-  };
-  assert.deepEqual(loadTraceOptions(storage), defaultTrace);
-  const options = { ...defaultTrace, threshold: 180, simplify: 4, noise: 25, thickness: 150,
-    polarity: "light" as const, colorOnly: true };
-  saveTraceOptions(options, storage);
-  assert.deepEqual(loadTraceOptions(storage), options);
-  assert.equal(values.size, 1);
-  const partial: Partial<typeof options> = { ...options };
-  delete partial.thickness;
-  storage.setItem("coinage.trace.v1", JSON.stringify(partial));
-  assert.deepEqual(loadTraceOptions(storage), { ...options, thickness: 100 });
-});
-
-test("invalid or unavailable import settings safely fall back to defaults", () => {
-  for (const value of ["{", "null", "[]", "42", JSON.stringify({ threshold: -1, simplify: "3",
-    noise: 101, thickness: 0, polarity: "unknown", colorOnly: 1 })]) {
-    assert.deepEqual(loadTraceOptions({ getItem: () => value }), defaultTrace);
-  }
-  assert.deepEqual(loadTraceOptions({ getItem: () => { throw new Error("blocked"); } }), defaultTrace);
-  assert.doesNotThrow(() => saveTraceOptions(defaultTrace, { setItem: () => { throw new Error("quota"); } }));
-});
 test("crossing strokes share a junction node", () => {
   const g = traceRaster(
     raster(
@@ -299,7 +339,14 @@ test("SVG exports real paths, escapes names, and omits hidden strokes", () => {
   g.strokes[0].visible = false;
   const svg = exportSvg(g);
   assert.equal((svg.match(/<path /g) || []).length, 1);
-  assert.ok(svg.includes(`d="${g.strokes.filter((s) => s.visible).map((s) => outlinePath(g, s)).join(" ")}"`));
+  assert.ok(
+    svg.includes(
+      `d="${g.strokes
+        .filter((s) => s.visible)
+        .map((s) => outlinePath(g, s))
+        .join(" ")}"`,
+    ),
+  );
   assert.ok(svg.includes("&lt;script&gt;"));
   assert.ok(!svg.includes("<image"));
   assert.ok(!svg.includes("<script>"));
@@ -374,7 +421,9 @@ test("all eight brush presets have distinct slanted ends and a constant-width bo
     // 参考形状：主体宽 40px，端部宽 54px，斜切长度为 12px。
     const startX = preset.start === "horizontal" ? 106 : 94;
     const endX = preset.end === "horizontal" ? 506 : 494;
-    assert.ok(path.includes(preset.start === "none" ? "100,120" : `${startX},127`));
+    assert.ok(
+      path.includes(preset.start === "none" ? "100,120" : `${startX},127`),
+    );
     assert.ok(path.includes(preset.end === "none" ? "500,120" : `${endX},127`));
     const contains = pathCoverage(path);
     assert.ok(contains({ x: 300, y: 119 }));
@@ -409,15 +458,21 @@ test("brushes rotate with the path and scale with local width", () => {
   const { g, s, brush } = brushFixture();
   brush.startTip = "horizontal";
   brush.endTip = "vertical";
-  const vertices = (d: string) => [...d.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)]
-    .map(([, x, y]) => ({ x: +x, y: +y }));
+  const vertices = (d: string) =>
+    [...d.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)].map(([, x, y]) => ({
+      x: +x,
+      y: +y,
+    }));
   const original = vertices(outlinePath(g, s, brush));
   for (const n of Object.values(g.nodes)) {
     const x = n.x;
     n.x = 200 - n.y;
     n.y = x;
   }
-  assert.deepEqual(vertices(outlinePath(g, s, brush)), original.map(({ x, y }) => ({ x: 200 - y, y: x })));
+  assert.deepEqual(
+    vertices(outlinePath(g, s, brush)),
+    original.map(({ x, y }) => ({ x: 200 - y, y: x })),
+  );
   g.nodes.a.width = 20;
   g.nodes.b.width = 80;
   const tapered = outlinePath(g, s, brush);
@@ -435,7 +490,8 @@ test("short, wide strokes keep ordered sides and an unflared middle", () => {
       assert.ok(!/NaN|Infinity/.test(path));
       assert.ok(containsPoint(path, { x: 100 + length / 2, y: 100 }));
       const lower = [...path.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)]
-        .map(([, x, y]) => ({ x: +x, y: +y })).filter((p) => p.y > 100);
+        .map(([, x, y]) => ({ x: +x, y: +y }))
+        .filter((p) => p.y > 100);
       assert.ok(lower.every((p, i) => i === 0 || p.x >= lower[i - 1].x));
       assert.ok(!containsPoint(path, { x: 100 + length / 2, y: 201 }));
     }
@@ -461,14 +517,23 @@ test("brush flares end before an interior knot and follow curved strokes", () =>
 });
 
 test("shared, branching and closed endpoints suppress brushes without deleting settings", () => {
-  for (const kind of ["continuation", "branch", "interior", "closed", "repeated"] as const) {
+  for (const kind of [
+    "continuation",
+    "branch",
+    "interior",
+    "closed",
+    "repeated",
+  ] as const) {
     const { g, s, brush } = brushFixture();
     g.nodes.c = { id: "c", x: 500, y: 300, width: 40, mode: "corner" };
     g.nodes.d = { id: "d", x: 600, y: 100, width: 40, mode: "corner" };
     if (kind === "closed") s.nodes = ["b", "a", "c", "b"];
     else if (kind === "repeated") s.nodes = ["a", "b", "c", "b"];
     else {
-      const peer = newStroke(kind === "interior" ? ["c", "b", "d"] : ["b", "c"], 1);
+      const peer = newStroke(
+        kind === "interior" ? ["c", "b", "d"] : ["b", "c"],
+        1,
+      );
       peer.locked = true;
       g.strokes.push(peer);
       if (kind === "branch") g.strokes.push(newStroke(["b", "d"], 2));
@@ -585,20 +650,31 @@ test("maximum brush tuning respects short strokes, knots and occupied endpoints"
 test("brush tuning survives JSON and SVG export and validates both ends", () => {
   const p = demoProject();
   const g = p.glyphs[0];
-  const brush = p.brush = structuredClone(defaultBrush);
+  const brush = (p.brush = structuredClone(defaultBrush));
   brush.startTip = "horizontal";
   brush.endTip = "vertical";
   brush.startBrush = { length: 200, spread: 0 };
   brush.endBrush = { length: 25, spread: 200 };
   const restored = JSON.parse(JSON.stringify(p));
   assert.ok(isProject(restored));
-  assert.equal(exportSvg(restored.glyphs[0], restored.brush), exportSvg(g, brush));
+  assert.equal(
+    exportSvg(restored.glyphs[0], restored.brush),
+    exportSvg(g, brush),
+  );
   for (const key of ["startBrush", "endBrush"]) {
     for (const value of [
-      null, [], {}, "100", { length: 100 }, { spread: 100 },
-      { length: 24, spread: 100 }, { length: 251, spread: 100 },
-      { length: 100, spread: -1 }, { length: 100, spread: 201 },
-      { length: NaN, spread: 100 }, { length: 100, spread: Infinity },
+      null,
+      [],
+      {},
+      "100",
+      { length: 100 },
+      { spread: 100 },
+      { length: 24, spread: 100 },
+      { length: 251, spread: 100 },
+      { length: 100, spread: -1 },
+      { length: 100, spread: 201 },
+      { length: NaN, spread: 100 },
+      { length: 100, spread: Infinity },
       { length: "100", spread: 100 },
     ]) {
       const invalid = structuredClone(restored);
@@ -609,11 +685,18 @@ test("brush tuning survives JSON and SVG export and validates both ends", () => 
 });
 
 test("global brushes apply to all glyphs and new strokes through the same export geometry", () => {
-  const first = brushFixture(), second = brushFixture(300);
-  const p: Project = { version: 1, activeId: first.g.id, glyphs: [first.g, second.g] };
+  const first = brushFixture(),
+    second = brushFixture(300);
+  const p: Project = {
+    version: 1,
+    activeId: first.g.id,
+    glyphs: [first.g, second.g],
+  };
   changeGlobalBrush(p, {
-    startTip: "horizontal", endTip: "vertical",
-    startBrush: { length: 150, spread: 180 }, endBrush: { length: 70, spread: 40 },
+    startTip: "horizontal",
+    endTip: "vertical",
+    startBrush: { length: 150, spread: 180 },
+    endBrush: { length: 70, spread: 40 },
   });
   for (const g of p.glyphs) {
     const s = g.strokes[0];
@@ -625,7 +708,10 @@ test("global brushes apply to all glyphs and new strokes through the same export
     assert.deepEqual(s, before);
   }
   const fresh = newStroke(["a", "b"], 1);
-  assert.equal(outlinePath({ ...first.g, strokes: [fresh] }, fresh, p.brush), outlinePath(first.g, first.s, p.brush));
+  assert.equal(
+    outlinePath({ ...first.g, strokes: [fresh] }, fresh, p.brush),
+    outlinePath(first.g, first.s, p.brush),
+  );
 });
 
 test("global changes apply to locked strokes without modifying their nodes or lock state", () => {
@@ -652,7 +738,10 @@ test("global brush changes still avoid connected endpoints", () => {
   g.strokes.push(newStroke(["b", "c"], 1));
   const p: Project = { version: 1, activeId: g.id, glyphs: [g] };
   const before = outlinePath(g, s);
-  changeGlobalBrush(p, { endTip: "horizontal", endBrush: { length: 250, spread: 200 } });
+  changeGlobalBrush(p, {
+    endTip: "horizontal",
+    endBrush: { length: 250, spread: 200 },
+  });
   assert.equal(outlinePath(g, s, p.brush), before);
   g.strokes[1].visible = false;
   assert.notEqual(outlinePath(g, s, p.brush), before);
@@ -665,12 +754,20 @@ test("global defaults persist in JSON, validate nested fields and restore with p
   const restored: Project = JSON.parse(JSON.stringify(p));
   assert.ok(isProject(restored));
   assert.deepEqual(restored.brush, p.brush);
-  assert.equal(exportSvg(restored.glyphs[0], restored.brush), exportSvg(p.glyphs[0], p.brush));
+  assert.equal(
+    exportSvg(restored.glyphs[0], restored.brush),
+    exportSvg(p.glyphs[0], p.brush),
+  );
   assert.equal(before.brush, undefined);
   assert.ok(isProject(before));
-  for (const brush of [null, [], {}, { ...defaultBrush, startTip: "basic" },
+  for (const brush of [
+    null,
+    [],
+    {},
+    { ...defaultBrush, startTip: "basic" },
     { ...defaultBrush, endBrush: { length: 0, spread: 100 } },
-    { ...defaultBrush, startBrush: null }]) {
+    { ...defaultBrush, startBrush: null },
+  ]) {
     assert.equal(isProject({ ...p, brush }), false);
   }
 });

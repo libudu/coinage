@@ -3,28 +3,11 @@ import { defaultBrush } from "../../core/brush";
 import type { BrushDefaults } from "../../core/brush";
 import { emptyGlyph, newStroke, uid } from "../../core/model";
 import type { Glyph, Point } from "../../core/model";
-export type TraceOptions = {
-  threshold: number;
-  simplify: number;
-  noise: number;
-  polarity: "dark" | "light";
-  colorOnly: boolean;
-  thickness: number;
-};
-export const defaultTrace: TraceOptions = {
-  threshold: 155,
-  simplify: 2.5,
-  noise: 14,
-  polarity: "dark",
-  colorOnly: false,
-  thickness: 100,
-};
-export const traceOptionLimits = {
-  threshold: { min: 20, max: 245 },
-  simplify: { min: 0.5, max: 8 },
-  noise: { min: 0, max: 100 },
-  thickness: { min: 25, max: 250 },
-} as const;
+import {
+  defaultImportSettings,
+  traceOptionLimits,
+} from "../../core/importSettings";
+import type { TraceOptions } from "../../core/importSettings";
 export type Raster = {
   pixels: Uint8ClampedArray;
   width: number;
@@ -43,8 +26,7 @@ export function makeMask(raster: Raster, options: TraceOptions) {
       a > 100 &&
       (options.polarity === "dark"
         ? brightness < options.threshold
-        : brightness > 255 - options.threshold) &&
-      (!options.colorOnly || Math.max(r, g, b) - Math.min(r, g, b) > 30)
+        : brightness > 255 - options.threshold)
         ? 1
         : 0;
   }
@@ -251,7 +233,11 @@ export function traceRasterWithPlacement(
       id,
       x: (p % w) * scale + ox,
       y: Math.floor(p / w) * scale + oy,
-      width: clamp(clamp((widths[p] * 2 - 0.6) * scale, 2, 200) * options.thickness / 100, 2, 200),
+      width: clamp(
+        options.width,
+        traceOptionLimits.width.min,
+        traceOptionLimits.width.max,
+      ),
       mode: "corner",
     };
     return id;
@@ -312,7 +298,7 @@ export function traceRasterWithPlacement(
       return;
     const xy = path.map((p) => ({ x: p % w, y: Math.floor(p / w) }));
     const indices = simplifyIndices(xy, options.simplify);
-    // 即使路径段为直线，也保留其中的宽度变化。
+    // 保留原图宽度变化处的节点，便于后续局部编辑。
     for (let i = 5; i < path.length - 5; i += 5) {
       const nearest = indices.reduce(
         (best, n) => (Math.abs(n - i) < Math.abs(best - i) ? n : best),
@@ -353,6 +339,15 @@ export function traceRasterWithPlacement(
   });
   if (!g.strokes.length)
     throw new Error("没有提取到有效路径，请降低去噪强度或使用更清晰的图片。");
+  return centerTraceGlyph(g, scale, brush);
+}
+
+function centerTraceGlyph(
+  g: Glyph,
+  scale: number,
+  brush: BrushDefaults,
+  referenceOffset: Point = { x: 0, y: 0 },
+) {
   // 整体平移全部轮廓，包括彼此不相连的笔画。
   const bounds = glyphBounds(g, brush)!,
     offset = {
@@ -365,8 +360,62 @@ export function traceRasterWithPlacement(
   }
   return {
     glyph: g,
-    referenceOffset: { x: offset.x / scale, y: offset.y / scale },
+    referenceOffset: {
+      x: referenceOffset.x + offset.x / scale,
+      y: referenceOffset.y + offset.y / scale,
+    },
   };
+}
+
+// 粗细不影响骨架，直接复用识别结果并重新对齐轮廓与原图。
+export function resizeTrace(
+  result: { glyph: Glyph; referenceOffset: Point },
+  raster: Pick<Raster, "width" | "height">,
+  width: number,
+  brush: BrushDefaults = defaultBrush,
+  offset: Point = { x: 0, y: 0 },
+) {
+  const glyph = {
+    ...result.glyph,
+    nodes: Object.fromEntries(
+      Object.entries(result.glyph.nodes).map(([id, node]) => [
+        id,
+        {
+          ...node,
+          width: clamp(
+            width,
+            traceOptionLimits.width.min,
+            traceOptionLimits.width.max,
+          ),
+        },
+      ]),
+    ),
+  };
+  const centered = centerTraceGlyph(
+    glyph,
+    640 / Math.max(raster.width, raster.height),
+    brush,
+    result.referenceOffset,
+  );
+  const nodes = Object.values(glyph.nodes);
+  const dx = clamp(
+      offset.x,
+      -Math.min(...nodes.map((n) => n.x)),
+      640 - Math.max(...nodes.map((n) => n.x)),
+    ),
+    dy = clamp(
+      offset.y,
+      -Math.min(...nodes.map((n) => n.y)),
+      640 - Math.max(...nodes.map((n) => n.y)),
+    );
+  nodes.forEach((node) => {
+    node.x += dx;
+    node.y += dy;
+  });
+  const scale = 640 / Math.max(raster.width, raster.height);
+  centered.referenceOffset.x += dx / scale;
+  centered.referenceOffset.y += dy / scale;
+  return centered;
 }
 
 export async function readImage(src: string): Promise<HTMLImageElement> {
@@ -379,15 +428,18 @@ export async function readImage(src: string): Promise<HTMLImageElement> {
 }
 export async function rasterize(
   src: string,
+  crop = defaultImportSettings.crop,
 ): Promise<{ raster: Raster; reference: string }> {
   const img = await readImage(src),
     canvas = document.createElement("canvas");
   canvas.width = canvas.height = 420;
   const ctx = canvas.getContext("2d", { willReadFrequently: true })!,
-    scale = 360 / Math.max(img.naturalWidth, img.naturalHeight),
-    w = img.naturalWidth * scale,
-    h = img.naturalHeight * scale;
-  ctx.drawImage(img, (420 - w) / 2, (420 - h) / 2, w, h);
+    side =
+      Math.max(img.naturalWidth, img.naturalHeight) * (1 - (crop * 2) / 100),
+    sx = (img.naturalWidth - side) / 2,
+    sy = (img.naturalHeight - side) / 2;
+  // 以补齐短边后的正方形向内裁剪，0 时保留完整原图。
+  ctx.drawImage(img, sx, sy, side, side, 30, 30, 360, 360);
   return {
     raster: {
       pixels: ctx.getImageData(0, 0, 420, 420).data,

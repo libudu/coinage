@@ -12,9 +12,13 @@ import { useCanvasInteraction } from "./useCanvasInteraction";
 import { findStrokeEdge } from "./strokeEdges";
 import {
   useActiveGlyph,
+  useEditTransaction,
   useProject,
   useProjectActions,
+  useProjectApi,
 } from "../project/useProject";
+import { activeGlyph } from "../project/projectStore";
+import { selectionLocked } from "./nodeSelection";
 
 export function EditorCanvas({
   importFile,
@@ -23,6 +27,7 @@ export function EditorCanvas({
   openContextMenu,
 }: EditorCanvasProps) {
   const toast = useToast();
+  const api = useProjectApi();
   const glyph = useActiveGlyph();
   const nodeIds = useProject((s) => s.session.nodeIds);
   const nodeId = nodeIds.at(-1) ?? null;
@@ -54,6 +59,16 @@ export function EditorCanvas({
     svg,
   });
   const { start, move, end, canvasDown, drag } = interaction;
+  const wheelTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const wheelWidths = useRef<{ id: string; width: number }[]>([]);
+  const wheelDelta = useRef(0);
+  const { begin, finish, isActive } = useEditTransaction(() => {
+    clearTimeout(wheelTimer.current);
+    wheelWidths.current = [];
+    wheelDelta.current = 0;
+  });
   const reset = () => {
     setZoom(1);
     setPan({ x: 0, y: 0 });
@@ -86,19 +101,80 @@ export function EditorCanvas({
       );
     });
     observer.observe(stage.current);
-    const wheel = (e: WheelEvent) => {
-      e.preventDefault();
-      if (e.ctrlKey || e.metaKey)
-        setZoom((z) => clamp(z * (e.deltaY < 0 ? 1.08 : 0.92), 0.25, 4));
-      else setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
-    };
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
     const el = stage.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      if (modalOpen || (e.target as Element).closest("button, input")) return;
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        finish();
+        if (e.deltaY)
+          setZoom((z) => clamp(z * (e.deltaY < 0 ? 1.08 : 0.92), 0.25, 4));
+        return;
+      }
+      const state = api.getState(),
+        currentGlyph = activeGlyph(state),
+        ids = state.session.nodeIds;
+      if (preview || space || state.session.tool === "hand" || !ids.length) {
+        finish();
+        setPan((p) => ({ x: p.x - e.deltaX, y: p.y - e.deltaY }));
+        return;
+      }
+      if (
+        !e.deltaY ||
+        drag.current ||
+        selectionLocked(currentGlyph, ids) ||
+        (state.transaction && !isActive())
+      )
+        return;
+      if (!isActive()) {
+        finish();
+        wheelWidths.current = ids.map((id) => ({
+          id,
+          width: currentGlyph.nodes[id].width,
+        }));
+      }
+      const widths = wheelWidths.current.map((n) => n.width);
+      const minFactor = 1 / Math.min(...widths),
+        maxFactor = 200 / Math.max(...widths),
+        minDelta = -1200 * Math.log(maxFactor),
+        maxDelta = -1200 * Math.log(minFactor);
+      // 从本轮滚动的原始宽度计算，往返滚动可完整恢复轮廓和重做历史。
+      const delta =
+        e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 640 : 1);
+      const nextDelta = clamp(wheelDelta.current + delta, minDelta, maxDelta);
+      const factor =
+        nextDelta === maxDelta
+          ? minFactor
+          : nextDelta === minDelta
+            ? maxFactor
+            : Math.exp(-nextDelta / 1200);
+      if (
+        wheelWidths.current.every(
+          (n) =>
+            currentGlyph.nodes[n.id].width === clamp(n.width * factor, 1, 200),
+        )
+      )
+        return;
+      const token = begin();
+      wheelDelta.current = nextDelta;
+      state.actions.update((g) => {
+        wheelWidths.current.forEach((n) => {
+          g.nodes[n.id].width = clamp(n.width * factor, 1, 200);
+        });
+      }, token);
+      clearTimeout(wheelTimer.current);
+      wheelTimer.current = setTimeout(() => finish(), 200);
+    };
     el.addEventListener("wheel", wheel, { passive: false });
     return () => {
-      observer.disconnect();
       el.removeEventListener("wheel", wheel);
+      finish();
     };
-  }, []);
+  }, [api, begin, finish, isActive, modalOpen, preview, space, drag]);
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (

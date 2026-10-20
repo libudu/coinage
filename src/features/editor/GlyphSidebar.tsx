@@ -1,5 +1,5 @@
 import { Button } from "../../shared/components/Button";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { centerPath } from "../../core/geometry";
 import type { Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
@@ -28,6 +28,19 @@ export function GlyphSidebar({ openGlyphContextMenu, importGlyph }: Props) {
     "strokes",
   );
   const nodes = Object.values(glyph.nodes);
+  const glyphList = useRef<HTMLDivElement>(null);
+  const activeCard = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    const list = glyphList.current,
+      card = activeCard.current;
+    if (!list || !card) return;
+    const viewport = list.getBoundingClientRect(),
+      item = card.getBoundingClientRect();
+    const top = viewport.top + list.clientTop,
+      bottom = top + list.clientHeight;
+    if (item.top < top) list.scrollTop += item.top - top;
+    else if (item.bottom > bottom) list.scrollTop += item.bottom - bottom;
+  }, [glyph.id]);
   return (
     <aside className="left-panel bg-[var(--panel)] min-h-0 flex flex-col border-r [border-right-style:solid] border-r-[var(--border)]">
       <div
@@ -43,6 +56,7 @@ export function GlyphSidebar({ openGlyphContextMenu, importGlyph }: Props) {
         <AddGlyphMenu addGlyph={addGlyph} importGlyph={importGlyph} />
       </div>
       <div
+        ref={glyphList}
         className="glyph-list pt-0 px-[12px] pb-[19px] flex flex-col gap-[8px] max-h-[46%] overflow-auto shrink-0 wide:pt-0
         wide:px-[17px] wide:pb-[24px] tablet:pt-0 tablet:px-[8px] tablet:pb-[15px] compact:pt-0 compact:px-[7px]
         compact:pb-[12px] compact:gap-[8px] compact:max-h-[52%] phone:pl-[5px] phone:pr-[5px]"
@@ -51,6 +65,7 @@ export function GlyphSidebar({ openGlyphContextMenu, importGlyph }: Props) {
           <Button
             variant="bare"
             key={g.id}
+            ref={g.id === glyph.id ? activeCard : undefined}
             aria-label={g.name || `字符 ${String(index + 1).padStart(2, "0")}`}
             className={`glyph-card ${g.id === glyph.id ? "selected" : ""} flex items-center gap-[13px] text-left min-h-[83px]
               p-[9px] border [border-style:solid] border-[transparent] rounded-[8px] relative wide:min-h-[93px]
