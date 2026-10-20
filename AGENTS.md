@@ -57,7 +57,7 @@ src/
 │   │   └── trace.worker.ts     # 后台转换入口
 │   └── project/
 │       ├── projectStore.ts    # Zustand 手稿、会话、历史与编辑事务
-│       ├── projectAutosave.ts # 已提交手稿的三秒节流保存、重试与状态
+│       ├── projectAutosave.ts # 已提交手稿的一秒节流保存、重试与状态
 │       ├── useProject.tsx     # 状态 Provider、按需订阅与控件事务
 │       ├── projectStorage.ts  # 本地服务增量存储、确认基线、重试与保存队列
 │       └── useProjectFiles.ts # 图片读取、应急 JSON 副本及 SVG/PNG 导出
@@ -145,7 +145,7 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 
 ### 保存与数据
 
-- `projectAutosave` 只订阅已提交手稿，采用三秒节流：窗口内合并最新修改，后续提交不推迟计时；请求期间的新提交仍遵循三秒窗口。隐藏页面或 Ctrl+S 时先提交事务再立即 flush。
+- `projectAutosave` 只订阅已提交手稿，采用一秒节流：窗口内合并最新修改，后续提交不推迟计时；请求期间的新提交仍遵循一秒窗口。隐藏页面或 Ctrl+S 时先提交事务再立即 flush。
 - 保留重试、离页保护和过期响应检查；并发 flush 共享保存结果，`projectStorage` 负责串行队列和 revision。失败提示持续到保存成功，撤销回旧快照不能视为已保存。
 - 先从 `/api/project` 加载再挂载编辑器；读取失败禁止用示例覆盖，文件不存在时才创建初始手稿，不读取浏览器手稿存储。
 - 前端偏好通过 `shared/utils/localSettings.ts` 统一存入 `coinage.settings`，与手稿和操作历史分离；读取须校验并提供默认值，存储异常不阻断界面。造句字格默认开启，关闭时仅隐藏成功匹配字符的字格。
