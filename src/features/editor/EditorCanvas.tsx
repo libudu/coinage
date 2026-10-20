@@ -53,6 +53,8 @@ export function EditorCanvas({
     toast,
     space,
     preview,
+    nodesVisible,
+    modalOpen,
     pan,
     setPan,
     stage,
@@ -138,24 +140,19 @@ export function EditorCanvas({
         }));
       }
       const widths = wheelWidths.current.map((n) => n.width);
-      const minFactor = 1 / Math.min(...widths),
-        maxFactor = 200 / Math.max(...widths),
-        minDelta = -1200 * Math.log(maxFactor),
-        maxDelta = -1200 * Math.log(minFactor);
+      const minDelta = 1 - Math.min(...widths),
+        maxDelta = 200 - Math.max(...widths);
       // 从本轮滚动的原始宽度计算，往返滚动可完整恢复轮廓和重做历史。
-      const delta =
-        e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 640 : 1);
-      const nextDelta = clamp(wheelDelta.current + delta, minDelta, maxDelta);
-      const factor =
-        nextDelta === maxDelta
-          ? minFactor
-          : nextDelta === minDelta
-            ? maxFactor
-            : Math.exp(-nextDelta / 1200);
+      const nextDelta = clamp(
+        wheelDelta.current - Math.sign(e.deltaY),
+        minDelta,
+        maxDelta,
+      );
       if (
         wheelWidths.current.every(
           (n) =>
-            currentGlyph.nodes[n.id].width === clamp(n.width * factor, 1, 200),
+            currentGlyph.nodes[n.id].width ===
+            clamp(n.width + nextDelta, 1, 200),
         )
       )
         return;
@@ -163,7 +160,7 @@ export function EditorCanvas({
       wheelDelta.current = nextDelta;
       state.actions.update((g) => {
         wheelWidths.current.forEach((n) => {
-          g.nodes[n.id].width = clamp(n.width * factor, 1, 200);
+          g.nodes[n.id].width = clamp(n.width + nextDelta, 1, 200);
         });
       }, token);
       clearTimeout(wheelTimer.current);
@@ -291,7 +288,8 @@ export function EditorCanvas({
         onPointerDown={(e) => {
           if (e.button !== 0 && e.button !== 1) return;
           if (e.target === e.currentTarget) {
-            if (space || tool === "hand" || e.button === 1) start(e, "pan");
+            if (tool === "select" || space || tool === "hand" || e.button === 1)
+              canvasDown(e);
             else select(null, null);
           }
         }}
@@ -471,6 +469,32 @@ export function EditorCanvas({
               nodesVisible={nodesVisible}
               interaction={interaction}
             />
+            {interaction.marquee && (
+              <rect
+                className="selection-marquee"
+                aria-hidden="true"
+                x={Math.min(
+                  interaction.marquee.start.x,
+                  interaction.marquee.end.x,
+                )}
+                y={Math.min(
+                  interaction.marquee.start.y,
+                  interaction.marquee.end.y,
+                )}
+                width={Math.abs(
+                  interaction.marquee.end.x - interaction.marquee.start.x,
+                )}
+                height={Math.abs(
+                  interaction.marquee.end.y - interaction.marquee.start.y,
+                )}
+                fill="#a8d99a"
+                fillOpacity={0.2}
+                stroke="#547a48"
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+                pointerEvents="none"
+              />
+            )}
           </svg>
           <div
             className="artboard-corner corner-tl absolute w-[7px] h-[7px] pointer-events-none border-[#b8c3a7] border-solid top-0

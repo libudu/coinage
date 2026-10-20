@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   Dispatch,
   MouseEvent,
@@ -11,7 +11,11 @@ import { newStroke, uid } from "../../core/model";
 import type { Point, Project, Stroke } from "../../core/model";
 import { reconcileStrokeGeometry } from "../../core/strokeEditing";
 import type { Notify } from "../../shared/components/Toast";
-import { selectionLocked, translateNodes } from "./nodeSelection";
+import {
+  selectableNodeIds,
+  selectionLocked,
+  translateNodes,
+} from "./nodeSelection";
 import {
   useActiveGlyph,
   useProject,
@@ -21,7 +25,7 @@ import {
 import type { TransactionId } from "../project/projectStore";
 
 type Drag = {
-  kind: "node" | "branch" | "handle" | "stroke" | "pan";
+  kind: "node" | "branch" | "handle" | "stroke" | "pan" | "marquee";
   id?: string;
   nodeIds?: string[];
   deselectOnClick?: boolean;
@@ -34,12 +38,17 @@ type Drag = {
   branch?: { sourceId: string; strokeId: string };
   pan?: Point;
   sign?: number;
+  selection?: { nodeIds: string[]; strokeId: string | null; additive: boolean };
+  clientStart?: Point;
+  selecting?: boolean;
 };
 
 type Options = {
   toast: Notify;
   space: boolean;
   preview: boolean;
+  nodesVisible?: boolean;
+  modalOpen?: boolean;
   pan: Point;
   setPan: Dispatch<SetStateAction<Point>>;
   stage: RefObject<HTMLDivElement | null>;
@@ -50,6 +59,8 @@ export function useCanvasInteraction({
   toast,
   space,
   preview,
+  nodesVisible = true,
+  modalOpen = false,
   pan,
   setPan,
   stage,
@@ -69,11 +80,21 @@ export function useCanvasInteraction({
     cancelTransaction,
   } = useProjectActions();
   const drag = useRef<Drag | null>(null);
+  const [marquee, setMarquee] = useState<{ start: Point; end: Point } | null>(
+    null,
+  );
+  const clearDrag = () => {
+    const d = drag.current;
+    drag.current = null;
+    if (d?.kind === "marquee") setMarquee(null);
+    if (d && stage.current?.hasPointerCapture(d.pointerId))
+      stage.current.releasePointerCapture(d.pointerId);
+  };
   useEffect(() => {
     const finish = () => {
       if (drag.current?.transaction)
         commitTransaction(drag.current.transaction);
-      drag.current = null;
+      clearDrag();
     };
     window.addEventListener("blur", finish);
     return () => {
@@ -81,6 +102,25 @@ export function useCanvasInteraction({
       finish();
     };
   }, [commitTransaction]);
+  useEffect(() => {
+    if (drag.current?.kind === "marquee") clearDrag();
+  }, [glyph.id, tool, preview, nodesVisible, modalOpen]);
+  useEffect(
+    () =>
+      api.subscribe((state, previous) => {
+        const d = drag.current;
+        if (
+          d?.kind === "marquee" &&
+          (state.project !== d.before ||
+            state.session.tool !== previous.session.tool ||
+            (!d.selecting &&
+              (state.session.nodeIds !== previous.session.nodeIds ||
+                state.session.strokeId !== previous.session.strokeId)))
+        )
+          clearDrag();
+      }),
+    [api],
+  );
   const penTail = useRef<string | null>(null);
   const penStroke = useRef<string | null>(null);
   const stroke = glyph.strokes.find((s) => s.id === strokeId);
@@ -101,11 +141,16 @@ export function useCanvasInteraction({
   useEffect(() => {
     finishPen();
   }, [glyph.id, tool]);
-  const point = (e: { clientX: number; clientY: number }): Point => {
+  const point = (
+    e: { clientX: number; clientY: number },
+    bounded = true,
+  ): Point => {
     const m = svg.current?.getScreenCTM();
     if (!m) return { x: 0, y: 0 };
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
-    return { x: clamp(p.x, 0, 640), y: clamp(p.y, 0, 640) };
+    return bounded
+      ? { x: clamp(p.x, 0, 640), y: clamp(p.y, 0, 640) }
+      : { x: p.x, y: p.y };
   };
   const start = (e: PE, kind: Drag["kind"], id?: string, sign?: number) => {
     let movingIds: string[] | undefined;
@@ -222,6 +267,33 @@ export function useCanvasInteraction({
         x: d.pan!.x + e.clientX - d.start.x,
         y: d.pan!.y + e.clientY - d.start.y,
       });
+      return;
+    }
+    if (d.kind === "marquee") {
+      if (distance({ x: e.clientX, y: e.clientY }, d.clientStart!) > 3)
+        d.moved = true;
+      if (!d.moved) return;
+      const p = point(e, false);
+      const ids = selectableNodeIds(glyph).filter((id) => {
+        const n = glyph.nodes[id];
+        return (
+          n.x >= Math.min(d.start.x, p.x) &&
+          n.x <= Math.max(d.start.x, p.x) &&
+          n.y >= Math.min(d.start.y, p.y) &&
+          n.y <= Math.max(d.start.y, p.y)
+        );
+      });
+      const selected = [
+        ...new Set([
+          ...(d.selection!.additive ? d.selection!.nodeIds : []),
+          ...ids,
+        ]),
+      ];
+      setMarquee({ start: d.start, end: p });
+      // 框选自身的实时高亮保留手势，其他来源的选区切换会结束旧手势。
+      d.selecting = true;
+      selectNodes(selected, strokeForNode(selected.at(-1)));
+      d.selecting = false;
       return;
     }
     let p = point(e);
@@ -377,6 +449,12 @@ export function useCanvasInteraction({
   const end = (e: PE, cancel = false) => {
     const d = drag.current;
     if (!d || e.pointerId !== d.pointerId) return;
+    if (d.kind === "marquee") {
+      clearDrag();
+      if (cancel) selectNodes(d.selection!.nodeIds, d.selection!.strokeId);
+      else if (!d.moved && !d.selection!.additive) select(null, null);
+      return;
+    }
     if (d.transaction && api.getState().transaction?.id !== d.transaction) {
       drag.current = null;
       return;
@@ -398,12 +476,12 @@ export function useCanvasInteraction({
   };
   const cancelDrag = () => {
     const d = drag.current;
-    drag.current = null;
+    clearDrag();
     if (!d) return;
-    if (d.transaction) cancelTransaction(d.transaction);
+    if (d.kind === "marquee")
+      selectNodes(d.selection!.nodeIds, d.selection!.strokeId);
+    else if (d.transaction) cancelTransaction(d.transaction);
     else if (d.pan) setPan(d.pan);
-    if (stage.current?.hasPointerCapture(d.pointerId))
-      stage.current.releasePointerCapture(d.pointerId);
   };
   const canvasDown = (e: PE) => {
     if (
@@ -414,6 +492,27 @@ export function useCanvasInteraction({
       return;
     if (space || tool === "hand" || e.button === 1) {
       start(e, "pan");
+      return;
+    }
+    if (modalOpen) return;
+    if (tool === "select" && !preview && nodesVisible) {
+      e.preventDefault();
+      e.stopPropagation();
+      commitTransaction();
+      drag.current = {
+        kind: "marquee",
+        pointerId: e.pointerId,
+        start: point(e, false),
+        clientStart: { x: e.clientX, y: e.clientY },
+        before: api.getState().project,
+        moved: false,
+        selection: {
+          nodeIds,
+          strokeId,
+          additive: e.shiftKey || e.ctrlKey || e.metaKey,
+        },
+      };
+      stage.current?.setPointerCapture(e.pointerId);
       return;
     }
     if (tool !== "pen" || preview) {
@@ -514,5 +613,6 @@ export function useCanvasInteraction({
     penTail,
     nodeLocked,
     finishPen,
+    marquee,
   };
 }

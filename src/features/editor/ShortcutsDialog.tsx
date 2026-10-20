@@ -32,6 +32,7 @@ export function ShortcutsDialog({ onClose }: { onClose: () => void }) {
             ["移动节点", "方向键"],
             ["全选节点", "Ctrl + A"],
             ["多选 / 取消选中节点", "Shift / Ctrl + 点击"],
+            ["框选节点 / 追加框选", "空白处拖动 / Shift + 拖动"],
             ["大步移动节点", "Shift + 方向键"],
             ["调整所选节点粗细", "滚轮"],
             ["缩放画布", "Ctrl / ⌘ + 滚轮"],

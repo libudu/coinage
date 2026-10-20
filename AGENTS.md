@@ -99,6 +99,7 @@ tests/projectAutosave.test.ts   # 保存触发、重试、冲突与过期响应�
 tests/editorTransactions.test.ts # jsdom 组件事件与事务边界回归测试
 tests/canvasGeometry.test.ts     # 插点后的实际指针拖动、控制柄、往返与历史回归测试
 tests/canvasWheel.test.ts        # 滚轮粗细、事务、锁定与画布视图回归测试
+tests/canvasSelection.test.ts    # 框选、追加选择、坐标变换、取消与整体拖动回归测试
 tests/importPreview.test.ts      # 导入粗细实时预览、识别隔离与原图对齐测试
 tests/importSettings.test.ts     # 导入参数校验、后端读写队列与重试测试
 tests/workspaceNavigation.test.ts # 字库预览、基本信息、页面切换与快捷键隔离测试

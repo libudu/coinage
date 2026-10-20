@@ -106,20 +106,18 @@ async function settle(t: TestContext) {
   await act(async () => t.mock.timers.tick(200));
 }
 
-test("wheel scales only selected nodes proportionally and commits one undo step per burst", async (t) => {
+test("wheel changes each selected node by 1 px and commits one undo step per burst", async (t) => {
   const { store, stage } = await render(t);
   const state = store.getState,
     actions = state().actions;
   await act(async () => actions.selectNodes(["a", "mid"]));
   const before = state().project;
   await wheel(stage, -120);
+  assert.equal(activeGlyph(state()).nodes.a.width, 41);
   await wheel(stage, -120);
   const edited = activeGlyph(state());
-  assert.ok(edited.nodes.a.width > 40);
-  assert.equal(
-    edited.nodes.a.width / 40,
-    edited.nodes.mid.width / before.glyphs[0].nodes.mid.width,
-  );
+  assert.equal(edited.nodes.a.width, 42);
+  assert.equal(edited.nodes.mid.width, before.glyphs[0].nodes.mid.width + 2);
   assert.equal(edited.nodes.b.width, 80);
   assert.equal(state().committedProject, before);
   assert.equal(state().past.length, 0);
@@ -134,8 +132,9 @@ test("wheel scales only selected nodes proportionally and commits one undo step 
   await act(async () => actions.select("mid"));
   await wheel(stage, 120);
   await settle(t);
-  assert.ok(
-    activeGlyph(state()).nodes.mid.width < after.glyphs[0].nodes.mid.width,
+  assert.equal(
+    activeGlyph(state()).nodes.mid.width,
+    after.glyphs[0].nodes.mid.width - 1,
   );
   assert.equal(state().past.length, 2);
 });
@@ -166,12 +165,30 @@ test("wheel respects width limits, shared-node locks and unrelated active transa
   const { store, stage } = await render(t);
   const state = store.getState,
     actions = state().actions;
-  await act(async () => actions.select("a"));
+  await act(async () => {
+    actions.select("a");
+    actions.update((g) => {
+      g.nodes.a.width = 199;
+    });
+  });
   await wheel(stage, -100000);
   assert.equal(activeGlyph(state()).nodes.a.width, 200);
+  await wheel(stage, -120);
+  assert.equal(activeGlyph(state()).nodes.a.width, 200);
+  await wheel(stage, 120);
+  assert.equal(activeGlyph(state()).nodes.a.width, 199);
   await settle(t);
+  await act(async () =>
+    actions.update((g) => {
+      g.nodes.a.width = 2;
+    }),
+  );
   await wheel(stage, 100000);
   assert.equal(activeGlyph(state()).nodes.a.width, 1);
+  await wheel(stage, 120);
+  assert.equal(activeGlyph(state()).nodes.a.width, 1);
+  await wheel(stage, -120);
+  assert.equal(activeGlyph(state()).nodes.a.width, 2);
   await settle(t);
   await act(async () =>
     actions.update((g) => {
@@ -247,16 +264,27 @@ test("Ctrl and Command wheel keep zooming; unselected and hand modes keep pannin
   assert.equal(state().past.length, 0);
 });
 
-test("line wheel units match pixel deltas and window blur commits pending changes", async (t) => {
+test("wheel uses 1 px for every delta magnitude and unit; window blur commits pending changes", async (t) => {
   const { store, stage } = await render(t);
   const state = store.getState,
     actions = state().actions;
   await act(async () => actions.select("a"));
   const before = state().project;
-  await wheel(stage, -3, { deltaMode: 1 });
-  await wheel(stage, 120);
-  await settle(t);
-  assert.equal(state().project, before);
+  await wheel(stage, 0, { deltaX: 120 });
+  assert.equal(state().transaction, null);
+  for (const [deltaY, deltaMode] of [
+    [-0.5, 0],
+    [-120, 0],
+    [-100000, 0],
+    [-3, 1],
+    [-1, 2],
+  ]) {
+    await wheel(stage, deltaY, { deltaMode });
+    assert.equal(activeGlyph(state()).nodes.a.width, 41);
+    await wheel(stage, -deltaY, { deltaMode });
+    await settle(t);
+    assert.equal(state().project, before);
+  }
   await wheel(stage, -120);
   await act(async () => window.dispatchEvent(new dom.window.Event("blur")));
   assert.equal(state().transaction, null);
