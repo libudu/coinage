@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { centerPath } from "../../core/geometry";
 import type { Glyph, Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
+import { segmentedStateClasses } from "../../shared/components/controls";
 import type { useProject } from "../project/useProject";
 import { GlyphPreview } from "./GlyphPreview";
 import { AddGlyphMenu } from "./AddGlyphMenu";
@@ -9,6 +11,7 @@ type Props = {
   doc: ReturnType<typeof useProject>;
   glyph: Glyph;
   strokeId: string | null;
+  nodeIds: string[];
   select: (node: string | null, stroke?: string | null) => void;
   switchGlyph: (id: string) => void;
   openGlyphContextMenu: (id: string, position: Point) => void;
@@ -20,6 +23,7 @@ export function GlyphSidebar({
   doc,
   glyph,
   strokeId,
+  nodeIds,
   select,
   switchGlyph,
   openGlyphContextMenu,
@@ -27,6 +31,8 @@ export function GlyphSidebar({
   importGlyph,
 }: Props) {
   const { project, update } = doc;
+  const [compositionView, setCompositionView] = useState<"strokes" | "nodes">("strokes");
+  const nodes = Object.values(glyph.nodes);
   return (
     <aside className="left-panel bg-[var(--panel)] min-h-0 flex flex-col border-r [border-right-style:solid] border-r-[var(--border)]">
       <div className="panel-tabs h-[62px] flex items-center justify-between py-0 px-[19px] shrink-0 text-[12px]
@@ -76,14 +82,43 @@ export function GlyphSidebar({
       <div className="layers-section border-t [border-top-style:solid] border-t-[var(--border)] pt-[22px] px-[12px] pb-[12px]
         min-h-0 flex-1 flex flex-col [&>.section-heading]:py-0 [&>.section-heading]:px-[8px]
         [&>.section-heading]:mb-[13px] laptop:pl-[9px] laptop:pr-[9px] compact:pt-[16px] compact:px-[6px]
-        compact:pb-[8px] compact:[&>.section-heading]:py-0 compact:[&>.section-heading]:px-[4px]">
-        <div className="section-heading mb-[19px]">
-          <h3 className="m-0 whitespace-nowrap font-semibold">
-            笔画{" "}<span className="text-[#a0a69b] font-normal">({glyph.strokes.length})</span>
+        compact:pb-[8px] compact:[&>.section-heading]:py-0 compact:[&>.section-heading]:px-0">
+        <div className="section-heading flex items-center justify-between gap-[4px] shrink-0 mb-[19px]">
+          <h3 className="m-0 whitespace-nowrap font-semibold laptop:text-[14px] compact:text-[12px]">
+            构成
           </h3>
+          <div
+            className={`segmented flex shrink-0 border border-solid border-[#e2e8d9] rounded-[6px] bg-[#f0f3ea] p-[2px]
+              [&>button]:h-[25px] [&>button]:px-[7px] [&>button]:rounded-[4px] [&>button]:text-[12px]
+              laptop:[&>button]:px-[3px]
+              [&>button]:text-[#77856a] [&>button]:whitespace-nowrap compact:[&>button]:w-[15px]
+              compact:[&>button]:px-0 compact:[&>button]:grid compact:[&>button]:place-items-center ${segmentedStateClasses}`}
+            role="group"
+            aria-label="构成视图"
+          >
+            {([
+              { value: "strokes", label: "笔画", icon: "pen", count: glyph.strokes.length },
+              { value: "nodes", label: "节点", icon: "node", count: nodes.length },
+            ] as const).map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={compositionView === item.value ? "active" : ""}
+                aria-label={item.label}
+                aria-pressed={compositionView === item.value}
+                title={`${item.label} (${item.count})`}
+                onClick={() => setCompositionView(item.value)}
+              >
+                <span className="pl-[2px] compact:hidden">
+                  {item.label}<span className="ml-[3px] text-[11px] text-[#a0a69b] font-normal laptop:text-[10px] tablet:hidden">({item.count})</span>
+                </span>
+                <span className="hidden compact:block"><Icon name={item.icon} size={12} /></span>
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="layer-list flex-1 overflow-auto min-h-0">
-          {glyph.strokes.map((s, i) => (
+        <div key={compositionView} className="layer-list flex-1 overflow-auto min-h-0" aria-label={compositionView === "strokes" ? "笔画列表" : "节点列表"}>
+          {compositionView === "strokes" && glyph.strokes.map((s, i) => (
             <div
               key={s.id}
               className={`layer-row ${strokeId === s.id ? "selected" : ""} ${!s.visible ? "muted" : ""} flex items-center h-[40px]
@@ -138,9 +173,33 @@ export function GlyphSidebar({
               </button>
             </div>
           ))}
-          {!glyph.strokes.length && (
+          {compositionView === "nodes" && nodes.map((node, index) => (
+            <button
+              key={node.id}
+              type="button"
+              className={`node-row ${nodeIds.includes(node.id) ? "selected" : ""} flex items-center gap-[7px] w-full h-[40px]
+                border border-solid border-transparent rounded-[5px] mb-[5px] px-[7px] text-left text-[12px]
+                tablet:px-[3px] compact:gap-[3px] compact:px-0 compact:h-[34px]
+                [&.selected]:bg-[#eaf0e1] [&.selected]:border-[#dce5d0] hover:bg-[#eef2e8]`}
+              aria-pressed={nodeIds.includes(node.id)}
+              title={`节点 ${String(index + 1).padStart(2, "0")} · X ${Math.round(node.x)} / Y ${Math.round(node.y)}`}
+              onClick={() => {
+                const stroke = glyph.strokes.find((s) => s.id === strokeId && s.nodes.includes(node.id))
+                  ?? glyph.strokes.find((s) => s.visible && s.nodes.includes(node.id))
+                  ?? glyph.strokes.find((s) => s.nodes.includes(node.id));
+                select(node.id, stroke?.id ?? null);
+              }}
+            >
+              <span className="text-[#5f7755] shrink-0"><Icon name={node.mode} size={18} /></span>
+              <span className="min-w-0 truncate">节点 {String(index + 1).padStart(2, "0")}</span>
+              <small className="ml-auto text-[11px] text-[#929a89] font-mono whitespace-nowrap laptop:hidden">
+                {Math.round(node.x)}, {Math.round(node.y)}
+              </small>
+            </button>
+          ))}
+          {!(compositionView === "strokes" ? glyph.strokes.length : nodes.length) && (
             <div className="empty-layer flex items-center justify-center h-full text-[12px] text-[#afb4aa]">
-              暂无笔画
+              {compositionView === "strokes" ? "暂无笔画" : "暂无节点"}
             </div>
           )}
         </div>

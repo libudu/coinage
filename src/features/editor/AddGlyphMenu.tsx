@@ -73,7 +73,7 @@ export function AddGlyphMenu({ addGlyph, importGlyph }: Props) {
           id={menuId}
           role="menu"
           aria-label="新建字符"
-          className="w-[184px] p-[5px] bg-[#fcfdf9] border [border-style:solid] border-[#dfe3d7] rounded-[7px]
+          className="w-max whitespace-nowrap p-[5px] bg-[#fcfdf9] border [border-style:solid] border-[#dfe3d7] rounded-[7px]
             shadow-[0_8px_28px_#203d2226,_0_2px_6px_#203d2212] text-[12px] font-normal
             [&>button]:flex [&>button]:items-center [&>button]:gap-[9px] [&>button]:w-full [&>button]:h-[34px]
             [&>button]:px-[9px] [&>button]:rounded-[4px] [&>button]:text-left [&>button]:text-[#53674b]

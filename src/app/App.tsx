@@ -211,6 +211,7 @@ export default function App() {
           doc={doc}
           glyph={glyph}
           strokeId={strokeId}
+          nodeIds={nodeIds}
           select={select}
           switchGlyph={switchGlyph}
           openGlyphContextMenu={(id, position) => {
