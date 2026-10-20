@@ -10,9 +10,16 @@ type Options = {
   importing: boolean;
   shortcuts: boolean;
   setShortcuts: (open: boolean) => void;
+  confirmRemoveGlyph: (id: string) => void;
 };
 
-export function useEditorCommands({ toast, importing, shortcuts, setShortcuts }: Options) {
+export function useEditorCommands({
+  toast,
+  importing,
+  shortcuts,
+  setShortcuts,
+  confirmRemoveGlyph,
+}: Options) {
   const api = useProjectApi();
   const actions = useProjectActions();
   const nudge = useRef<{ id: TransactionId; key: string } | null>(null);
@@ -22,10 +29,18 @@ export function useEditorCommands({ toast, importing, shortcuts, setShortcuts }:
   };
   const remove = () => {
     finish();
+    const state = api.getState();
+    if (!state.session.nodeIds.length && !state.session.strokeId) {
+      confirmRemoveGlyph(activeGlyph(state).id);
+      return;
+    }
     if (actions.removeSelection()) toast("已删除，可撤销");
     else toast("请先解锁笔画");
   };
-  const duplicate = () => { finish(); actions.duplicateStroke(); };
+  const duplicate = () => {
+    finish();
+    actions.duplicateStroke();
+  };
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (!arrowKeys.has(e.key)) finish();
@@ -34,8 +49,15 @@ export function useEditorCommands({ toast, importing, shortcuts, setShortcuts }:
         if (e.key === "Escape") setShortcuts(false);
         return;
       }
-      if ((e.target as HTMLElement).closest("input, textarea, select, [contenteditable]")) return;
-      const state = api.getState(), glyph = activeGlyph(state), { nodeIds, strokeId } = state.session;
+      if (
+        (e.target as HTMLElement).closest(
+          "input, textarea, select, [contenteditable]",
+        )
+      )
+        return;
+      const state = api.getState(),
+        glyph = activeGlyph(state),
+        { nodeIds, strokeId } = state.session;
       if (e.ctrlKey || e.metaKey) {
         const key = e.key.toLowerCase();
         if (["a", "z", "y", "d"].includes(key)) e.preventDefault();
@@ -54,16 +76,26 @@ export function useEditorCommands({ toast, importing, shortcuts, setShortcuts }:
       if (nodeIds.length && !e.altKey && arrowKeys.has(e.key)) {
         e.preventDefault();
         const key = `${glyph.id}:${nodeIds.join(",")}`;
-        if (nudge.current?.key !== key || api.getState().transaction?.id !== nudge.current.id) {
+        if (
+          nudge.current?.key !== key ||
+          api.getState().transaction?.id !== nudge.current.id
+        ) {
           finish();
           nudge.current = { key, id: actions.beginTransaction() };
         }
         const d = e.shiftKey ? 10 : 1;
-        actions.moveSelection({ x: e.key === "ArrowRight" ? d : e.key === "ArrowLeft" ? -d : 0,
-          y: e.key === "ArrowDown" ? d : e.key === "ArrowUp" ? -d : 0 }, nudge.current.id);
+        actions.moveSelection(
+          {
+            x: e.key === "ArrowRight" ? d : e.key === "ArrowLeft" ? -d : 0,
+            y: e.key === "ArrowDown" ? d : e.key === "ArrowUp" ? -d : 0,
+          },
+          nudge.current.id,
+        );
       }
     };
-    const up = (e: KeyboardEvent) => { if (arrowKeys.has(e.key)) finish(); };
+    const up = (e: KeyboardEvent) => {
+      if (arrowKeys.has(e.key)) finish();
+    };
     window.addEventListener("keydown", handler);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", finish);
@@ -77,8 +109,11 @@ export function useEditorCommands({ toast, importing, shortcuts, setShortcuts }:
       window.removeEventListener("focusin", finish);
     };
   });
-  useEffect(() => () => {
-    if (nudge.current) actions.commitTransaction(nudge.current.id);
-  }, [actions]);
+  useEffect(
+    () => () => {
+      if (nudge.current) actions.commitTransaction(nudge.current.id);
+    },
+    [actions],
+  );
   return { remove, duplicate };
 }

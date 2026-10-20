@@ -7,7 +7,11 @@ import { IconButton } from "../../shared/components/controls";
 import type { EditorCanvasProps, Tool } from "./canvasTypes";
 import { GlyphArtwork } from "./GlyphArtwork";
 import { useCanvasInteraction } from "./useCanvasInteraction";
-import { useActiveGlyph, useProject, useProjectActions } from "../project/useProject";
+import {
+  useActiveGlyph,
+  useProject,
+  useProjectActions,
+} from "../project/useProject";
 
 export function EditorCanvas({
   importFile,
@@ -149,19 +153,23 @@ export function EditorCanvas({
     rulerY = (viewport.height - 640 * scale) / 2 + pan.y - 22;
   return (
     <main className="editor flex flex-col min-w-0 min-h-0 bg-[#f0f2eb]">
-      <div className="editor-topbar h-[51px] bg-[#f9faf5] border-b [border-bottom-style:solid] border-b-[var(--border)] flex
+      <div
+        className="editor-topbar h-[51px] bg-[#f9faf5] border-b [border-bottom-style:solid] border-b-[var(--border)] flex
         items-center justify-between gap-[10px] py-0 px-[24px] shrink-0 laptop:py-0 laptop:px-[17px] tablet:py-0
-        tablet:px-[12px] phone:py-0 phone:px-[10px]">
+        tablet:px-[12px] phone:py-0 phone:px-[10px]"
+      >
         <HistoryActions />
-        <div className="view-actions flex gap-[5px] items-center [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
-          [&_.icon-button>svg]:w-[15px] [&_.icon-button>svg]:h-[15px] tablet:gap-[1px]
-          phone:[&_.mini-divider]:hidden phone:[&_.icon-button]:w-[25px]">
+        <div
+          className="view-actions flex gap-[5px] items-center [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
+          [&_.icon-button>svg]:w-[17px] [&_.icon-button>svg]:h-[17px] tablet:gap-[1px]
+          phone:[&_.mini-divider]:hidden phone:[&_.icon-button]:w-[25px]"
+        >
           <button
-            className={`view-button ${preview ? "active" : ""} gap-[6px] items-center text-[12px] text-[#7a8671] py-[6px] px-[9px]
+            className={`view-button ${preview ? "active" : ""} gap-[6px] items-center text-[13px] text-[#7a8671] py-[6px] px-[9px]
               rounded-[4px] flex phone:p-[5px] [&.active]:bg-[#e7eddf] [&.active]:text-[#385e3d]`}
             onClick={() => setPreview((v) => !v)}
           >
-            <Icon name="eye" size={16} />
+            <Icon name="eye" size={18} />
             预览
           </button>
           <span className="mini-divider w-[1px] h-[17px] bg-[#dfe5d6] my-0 mx-[5px]" />
@@ -180,11 +188,7 @@ export function EditorCanvas({
               setPreview(false);
             }}
           />
-          <IconButton
-            icon="shortcut"
-            title="快捷键"
-            onClick={showShortcuts}
-          />
+          <IconButton icon="shortcut" title="快捷键" onClick={showShortcuts} />
         </div>
       </div>
       <div
@@ -208,15 +212,24 @@ export function EditorCanvas({
           if (preview || drag.current) return;
           const target = e.target as Element;
           const targetNode =
-            target.closest("[data-node-id]")?.getAttribute("data-node-id") ?? null;
+            target.closest("[data-node-id]")?.getAttribute("data-node-id") ??
+            null;
           const targetStroke = targetNode
-            ? (stroke?.visible && stroke.nodes.includes(targetNode)
+            ? ((stroke?.visible && stroke.nodes.includes(targetNode)
                 ? stroke
-                : glyph.strokes.find((s) => s.visible && s.nodes.includes(targetNode)))
-                ?.id ?? null
-            : target.closest("[data-stroke-id]")?.getAttribute("data-stroke-id") ?? null;
+                : glyph.strokes.find(
+                    (s) => s.visible && s.nodes.includes(targetNode),
+                  )
+              )?.id ?? null)
+            : (target
+                .closest("[data-stroke-id]")
+                ?.getAttribute("data-stroke-id") ?? null);
           if (!targetNode && !targetStroke) return;
-          openContextMenu({ x: e.clientX, y: e.clientY }, targetNode, targetStroke);
+          openContextMenu(
+            { x: e.clientX, y: e.clientY },
+            targetNode,
+            targetStroke,
+          );
         }}
         onDragOver={(e) => {
           e.preventDefault();
@@ -274,13 +287,17 @@ export function EditorCanvas({
             </span>
           ))}
         </div>
-        <span className="ruler-origin absolute top-0 left-0 w-[22px] h-[22px] border-r [border-right-style:solid]
-          border-r-[#e3e7db] border-b [border-bottom-style:solid] border-b-[#e3e7db] bg-[#f2f4ed] z-[6]" />
-        <div className="canvas-tools absolute top-[47px] left-[38px] z-[10] bg-[#fcfdf8] border [border-style:solid]
+        <span
+          className="ruler-origin absolute top-0 left-0 w-[22px] h-[22px] border-r [border-right-style:solid]
+          border-r-[#e3e7db] border-b [border-bottom-style:solid] border-b-[#e3e7db] bg-[#f2f4ed] z-[6]"
+        />
+        <div
+          className="canvas-tools absolute top-[47px] left-[38px] z-[10] bg-[#fcfdf8] border [border-style:solid]
           border-[#dfe5d6] p-[5px] rounded-[8px] shadow-[0_3px_8px_#35472806] flex flex-col gap-[6px]
           [&_.icon-button]:w-[33px] [&_.icon-button]:h-[34px] [&_.icon-button]:rounded-[4px]
           [&_.icon-button]:text-[#748369] laptop:left-[30px] tablet:left-[29px] tablet:top-[38px] tablet:p-[3px]
-          tablet:gap-[3px] tablet:[&_.icon-button]:w-[28px] tablet:[&_.icon-button]:h-[30px] phone:left-[26px] [&_.icon-button.active]:bg-[#dcecba]! [&_.icon-button.active]:text-[#3f5d2c]!">
+          tablet:gap-[3px] tablet:[&_.icon-button]:w-[28px] tablet:[&_.icon-button]:h-[30px] phone:left-[26px] [&_.icon-button.active]:bg-[#dcecba]! [&_.icon-button.active]:text-[#3f5d2c]!"
+        >
           {(
             [
               { id: "select", icon: "cursor", label: "选择 V" },
@@ -310,13 +327,19 @@ export function EditorCanvas({
             transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
           }}
         >
-          <div className="artboard-label absolute bottom-[calc(100%_+_7px)] left-0 right-0 flex items-end justify-between text-[12px] text-[#8d9880]
+          <div
+            className="artboard-label absolute bottom-[calc(100%_+_7px)] left-0 right-0 flex items-end justify-between text-[12px] text-[#8d9880]
             pointer-events-none gap-[15px] [&>span:last-child]:[font-family:ui-monospace,_monospace]
             [&>span:last-child]:tracking-[0.5px] [&>span:first-child]:whitespace-nowrap
-            [&>span:first-child]:overflow-hidden [&>span:first-child]:text-ellipsis [&>span:last-child]:shrink-0">
+            [&>span:first-child]:overflow-hidden [&>span:first-child]:text-ellipsis [&>span:last-child]:shrink-0"
+          >
             <span className="flex min-w-0 flex-col gap-[3px] [&>span]:truncate">
               {glyph.name && <span>{glyph.name}</span>}
-              {glyph.description && <span className="text-[11px] text-[#a0a69b]">{glyph.description}</span>}
+              {glyph.description && (
+                <span className="text-[11px] text-[#a0a69b]">
+                  {glyph.description}
+                </span>
+              )}
             </span>
             <span>640 × 640</span>
           </div>
@@ -342,32 +365,45 @@ export function EditorCanvas({
               interaction={interaction}
             />
           </svg>
-          <div className="artboard-corner corner-tl absolute w-[7px] h-[7px] pointer-events-none border-[#b8c3a7] border-solid top-0
-            left-0 [border-width:1px_0_0_1px]" />
-          <div className="artboard-corner corner-br absolute w-[7px] h-[7px] pointer-events-none border-[#b8c3a7] border-solid
-            bottom-0 right-0 [border-width:0_1px_1px_0]" />
+          <div
+            className="artboard-corner corner-tl absolute w-[7px] h-[7px] pointer-events-none border-[#b8c3a7] border-solid top-0
+            left-0 [border-width:1px_0_0_1px]"
+          />
+          <div
+            className="artboard-corner corner-br absolute w-[7px] h-[7px] pointer-events-none border-[#b8c3a7] border-solid
+            bottom-0 right-0 [border-width:0_1px_1px_0]"
+          />
         </div>
         {dragOver && (
-          <div className="drop-message absolute inset-[24px] z-[15] bg-[#eef5e5ee] border-[2px] [border-style:dashed]
+          <div
+            className="drop-message absolute inset-[24px] z-[15] bg-[#eef5e5ee] border-[2px] [border-style:dashed]
             border-[#91ac6e] rounded-[10px] flex items-center justify-center flex-col gap-[15px] text-[#42633a]
-            pointer-events-none text-[15px]">
+            pointer-events-none text-[15px]"
+          >
             <Icon name="upload" size={32} />
             <span>松开以导入图片</span>
           </div>
         )}
-        <div className="canvas-bottom absolute bottom-[23px] left-[43px] right-[24px] flex items-center justify-end
-          pointer-events-none tablet:left-[34px] tablet:right-[14px] phone:left-[29px] phone:right-[10px]">
-          <div className="zoom-control flex items-center bg-[#fcfdf8] border [border-style:solid] border-[#dfe5d6] rounded-[7px]
+        <div
+          className="canvas-bottom absolute bottom-[23px] left-[43px] right-[24px] flex items-center justify-end
+          pointer-events-none tablet:left-[34px] tablet:right-[14px] phone:left-[29px] phone:right-[10px]"
+        >
+          <div
+            className="zoom-control flex items-center bg-[#fcfdf8] border [border-style:solid] border-[#dfe5d6] rounded-[7px]
             py-[3px] px-[4px] pointer-events-auto shadow-[0_2px_5px_#43502e03] [&_.icon-button]:w-[28px]
             [&_.icon-button]:h-[27px] [&_.icon-button>svg]:w-[14px] [&_.icon-button>svg]:h-[14px] [&>span]:h-[16px]
             [&>span]:w-[1px] [&>span]:bg-[#e3e8db] [&>span]:my-0 [&>span]:mx-[4px] tablet:p-[2px]
-            tablet:[&_.icon-button]:w-[23px]">
+            tablet:[&_.icon-button]:w-[23px]"
+          >
             <IconButton
               icon="minus"
               title="缩小"
               onClick={() => setZoom((z) => clamp(z / 1.2, 0.25, 4))}
             />
-            <button className="zoom-value text-[#77866b] min-w-[43px] h-[26px] tablet:min-w-[35px] [font:12px_ui-monospace,monospace]" onClick={reset}>
+            <button
+              className="zoom-value text-[#77866b] min-w-[43px] h-[26px] tablet:min-w-[35px] [font:12px_ui-monospace,monospace]"
+              onClick={reset}
+            >
               {Math.round(zoom * 100)}%
             </button>
             <IconButton
@@ -385,41 +421,52 @@ export function EditorCanvas({
 }
 
 const HistoryActions = memo(function HistoryActions() {
-  const canUndo = useProject((s) => s.past.length > 0 || !!s.transaction && s.project !== s.transaction.before);
-  const canRedo = useProject((s) => s.future.length > 0 && (!s.transaction || s.project === s.transaction.before));
+  const canUndo = useProject(
+    (s) =>
+      s.past.length > 0 ||
+      (!!s.transaction && s.project !== s.transaction.before),
+  );
+  const canRedo = useProject(
+    (s) =>
+      s.future.length > 0 &&
+      (!s.transaction || s.project === s.transaction.before),
+  );
   const saved = useProject((s) => s.saved);
   const saveError = useProject((s) => s.saveError);
   const { undo, redo } = useProjectActions();
   return (
-    <div className="history-actions flex items-center min-w-0 gap-[3px] [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
-          tablet:[&_.icon-button]:w-[25px] compact:gap-[1px]">
-          <IconButton
-            icon="undo"
-            title="撤销 Ctrl+Z"
-            onClick={undo}
-            disabled={!canUndo}
-          />
-          <IconButton
-            icon="redo"
-            title="重做 Ctrl+Shift+Z"
-            onClick={redo}
-            disabled={!canRedo}
-          />
-          <div
-            className={`save-state ${saved === "error" ? "error" : ""} flex items-center min-w-0 gap-[7px] ml-[10px]
-              text-[#8b9386] text-[12px] whitespace-nowrap compact:hidden [&.error]:text-[#a04c32]
+    <div
+      className="history-actions flex items-center min-w-0 gap-[3px] [&_.icon-button]:w-[28px] [&_.icon-button]:h-[28px]
+          [&_.icon-button>svg]:w-[20px] [&_.icon-button>svg]:h-[20px]
+          tablet:[&_.icon-button]:w-[25px] compact:gap-[1px]"
+    >
+      <IconButton
+        icon="undo"
+        title="撤销 Ctrl+Z"
+        onClick={undo}
+        disabled={!canUndo}
+      />
+      <IconButton
+        icon="redo"
+        title="重做 Ctrl+Shift+Z"
+        onClick={redo}
+        disabled={!canRedo}
+      />
+      <div
+        className={`save-state ${saved === "error" ? "error" : ""} flex items-center min-w-0 gap-[7px] ml-[10px]
+              text-[#8b9386] text-[13px] whitespace-nowrap compact:hidden [&.error]:text-[#a04c32]
               [&.error_.save-dot]:bg-[#b76548]`}
-            role="status"
-          >
-            <span className="save-dot inline-block w-[5px] h-[5px] rounded-[50%] bg-[#8eab70] shrink-0" />
-            <span className="truncate">
-              {saved === "saved"
-                ? "已保存到本机"
-                : saved === "saving"
-                  ? "稍后自动保存"
-                  : saveError || "本地保存失败，请导出手稿"}
-            </span>
-          </div>
-        </div>
+        role="status"
+      >
+        <span className="save-dot inline-block w-[5px] h-[5px] rounded-[50%] bg-[#8eab70] shrink-0" />
+        <span className="truncate">
+          {saved === "saved"
+            ? "已保存到本机"
+            : saved === "saving"
+              ? "稍后自动保存"
+              : saveError || "本地保存失败，请导出手稿"}
+        </span>
+      </div>
+    </div>
   );
 });

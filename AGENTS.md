@@ -38,6 +38,7 @@ src/
 │   │   ├── GlyphExport.tsx     # 属性栏导出按钮与格式菜单状态
 │   │   ├── EditorContextMenu.tsx # 字符、笔画与节点操作右键菜单
 │   │   ├── GlyphBasicInfoDialog.tsx # 字符对应汉语与描述编辑弹窗
+│   │   ├── GlyphDeleteDialog.tsx # 字符删除二次确认弹窗
 │   │   ├── BrushControls.tsx   # 全局起收笔与快捷预设
 │   │   ├── BrushTuning.tsx     # 折叠式笔锋长度、张开调节
 │   │   ├── TransactionalRange.tsx # 手稿滑块的指针、键盘与事务边界
@@ -63,7 +64,9 @@ src/
 │   │   ├── controls.tsx       # 通用控件与共享按钮/分段选择状态类
 │   │   ├── RangeInput.tsx     # 标准滑块与扩大拖动区域的行式滑块
 │   │   └── RangeInput.css     # 带专属类名的浏览器滑块伪元素
-│   └── utils/files.ts          # 文件下载与文件名处理
+│   └── utils/
+│       ├── files.ts            # 文件下载与文件名处理
+│       └── localSettings.ts    # 前端 localStorage 配置、默认值、校验与安全读写
 ├── styles/
 │   ├── index.css              # Tailwind 入口与保留原边界的断点变体
 │   └── base.css               # 全局重置、主题变量、最小页面宽度与减少动画规则
@@ -78,6 +81,7 @@ tests/projectStore.test.ts      # 状态、事务、历史、选择与锁定测�
 tests/projectAutosave.test.ts   # 保存触发、重试、冲突与过期响应测试
 tests/editorTransactions.test.ts # jsdom 组件事件与事务边界回归测试
 tests/workspaceNavigation.test.ts # 字库预览、基本信息、页面切换与快捷键隔离测试
+tests/localSettings.test.ts      # 前端配置默认值、持久化、无效数据与存储异常测试
 tests/support/domLoader.mjs     # 组件测试中的样式导入适配
 tests/package.smoke.ts          # 解压分发 ZIP 后验证便携 Node、重启与端口
 tests/packageZip.test.ts        # 分发清单、中文文件名、排除手稿与 ZIP 替换测试
@@ -105,6 +109,7 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 - 用 Immer 保留未变分支引用；字形、节点、笔画按 ID 派生，不重复存储。共享节点引用须有效，锁定保护几何和连接关系。
 - 连续拖拽、滑块、改名使用事务，每次只记一条历史；控件复用 `useEditTransaction`，手稿滑块用 `TransactionalRange`。指针只结束自身事务，过期 token 禁止写入；分支实际移动后才创建，回源点时移除。
 - 历史保留 60 步，新提交清空重做，取消或无变化不记历史。选择、工具、原图显示属于会话，不进入历史或保存。
+- 撤销重做仅针对造字编辑。字符新建、导入、基本信息编辑、复制和删除同步到历史快照，不新增历史或清空有效重做；删除字符时清理仅影响该字符的历史。字符删除须二次确认且无法撤销，节点和笔画删除仍可撤销。
 - 撤销重做、字符或选择目标切换须结束旧事务并清理失效选择；撤销优先保留当前仍存在的字符。事务内选中新建节点须传入所属 token。
 - 笔锋统一存于 `Project.brush`，通过 `changeGlobalBrush` 修改。画布、缩略图、导出共用配置，笔画锁定不阻止全局笔锋修改。
 
@@ -113,6 +118,7 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 - `projectAutosave` 只订阅已提交手稿，采用三秒节流：窗口内合并最新修改，后续提交不推迟计时；请求期间的新提交仍遵循三秒窗口。隐藏页面或 Ctrl+S 时先提交事务再立即 flush。
 - 保留重试、离页保护和过期响应检查；并发 flush 共享保存结果，`projectStorage` 负责串行队列和 revision。失败提示持续到保存成功，撤销回旧快照不能视为已保存。
 - 先从 `/api/project` 加载再挂载编辑器；读取失败禁止用示例覆盖，文件不存在时才创建初始手稿，不读取浏览器手稿存储。
+- 前端偏好通过 `shared/utils/localSettings.ts` 统一存入 `coinage.settings`，与手稿和操作历史分离；读取须校验并提供默认值，存储异常不阻断界面。造句字格默认开启，关闭时仅隐藏成功匹配字符的字格。
 - 软件尚未发布，仅支持当前数据结构，不增加历史格式迁移或兼容分支；格式变更同步调整类型、校验和测试。`Project` 不包含名称字段，字符与笔画名称仍保留。
 - 首次创建文件使用 PUT；后续基于已确认快照生成 PATCH，按字符与笔画 ID 定位、独立提交顺序，仅发送变化字段，未变化原图不得重传；无变化不请求。响应不明确时保留同一请求及 requestId，先确认基线，再保存后续修改；409 后停止覆盖。
 - 服务端串行校验 revision；仅同一请求、相同内容且磁盘仍为该次结果时确认重复 PATCH。合并后校验完整手稿和 64 MB 上限，再原子落盘。

@@ -18,6 +18,7 @@ import { useProjectFiles } from "../features/project/useProjectFiles";
 import { useEditorCommands } from "../features/editor/useEditorCommands";
 import { GlyphSidebar } from "../features/editor/GlyphSidebar";
 import { GlyphBasicInfoDialog } from "../features/editor/GlyphBasicInfoDialog";
+import { GlyphDeleteDialog } from "../features/editor/GlyphDeleteDialog";
 import { GlyphLibrary } from "../features/library/GlyphLibrary";
 import { AppNavigation } from "./AppNavigation";
 import type { WorkspacePage } from "./AppNavigation";
@@ -59,10 +60,24 @@ function ProjectSaveError({ exportProject }: { exportProject: () => void }) {
 function Workspace() {
   const [page, setPage] = useState<WorkspacePage>("library");
   const [contextMenu, setContextMenu] = useState<Point | null>(null);
-  const [editingGlyphInfo, setEditingGlyphInfo] = useState<Pick<Glyph, "id" | "name" | "description"> | null>(null);
+  const [editingGlyphInfo, setEditingGlyphInfo] = useState<Pick<
+    Glyph,
+    "id" | "name" | "description"
+  > | null>(null);
+  const [deletingGlyph, setDeletingGlyph] = useState<Pick<
+    Glyph,
+    "id" | "name"
+  > | null>(null);
   const api = useProjectApi();
-  const { update, select, selectNodes, switchGlyph, addGlyph, commitTransaction } =
-    useProjectActions();
+  const {
+    editGlyphInfo,
+    removeGlyph,
+    select,
+    selectNodes,
+    switchGlyph,
+    addGlyph,
+    commitTransaction,
+  } = useProjectActions();
   const [toast, setToast] = useState(""),
     [shortcuts, setShortcuts] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -88,9 +103,25 @@ function Workspace() {
     });
   const { remove, duplicate } = useEditorCommands({
     toast: setToast,
-    importing: page !== "editor" || !!source || !!editingGlyphInfo || !!contextMenu,
+    importing:
+      page !== "editor" ||
+      !!source ||
+      !!editingGlyphInfo ||
+      !!deletingGlyph ||
+      !!contextMenu,
     shortcuts,
     setShortcuts,
+    confirmRemoveGlyph: (id) => {
+      commitTransaction();
+      const glyphs = api.getState().project.glyphs;
+      const index = glyphs.findIndex((g) => g.id === id);
+      if (index >= 0)
+        setDeletingGlyph({
+          id,
+          name:
+            glyphs[index].name || `字符 ${String(index + 1).padStart(2, "0")}`,
+        });
+    },
   });
   const changePage = (next: WorkspacePage) => {
     if (next === page) return;
@@ -145,7 +176,14 @@ function Workspace() {
             showShortcuts={() => setShortcuts(true)}
             importFile={importFile}
             toast={setToast}
-            modalOpen={page !== "editor" || !!source || shortcuts || !!contextMenu || !!editingGlyphInfo}
+            modalOpen={
+              page !== "editor" ||
+              !!source ||
+              shortcuts ||
+              !!contextMenu ||
+              !!editingGlyphInfo ||
+              !!deletingGlyph
+            }
           />
           <Properties onExportSvg={saveSvg} onExportPng={savePng} />
         </div>
@@ -158,7 +196,11 @@ function Workspace() {
           duplicate={duplicate}
           editGlyphInfo={() => {
             const glyph = activeGlyph(api.getState());
-            setEditingGlyphInfo({ id: glyph.id, name: glyph.name, description: glyph.description });
+            setEditingGlyphInfo({
+              id: glyph.id,
+              name: glyph.name,
+              description: glyph.description,
+            });
           }}
           toast={setToast}
         />
@@ -169,16 +211,24 @@ function Workspace() {
           description={editingGlyphInfo.description ?? ""}
           onClose={() => setEditingGlyphInfo(null)}
           onConfirm={({ name, description }) => {
-            if (name !== editingGlyphInfo.name || description !== (editingGlyphInfo.description ?? "")) {
-              update((_, p) => {
-                const target = p.glyphs.find((g) => g.id === editingGlyphInfo.id);
-                if (target) {
-                  target.name = name;
-                  target.description = description;
-                }
-              });
+            if (
+              name !== editingGlyphInfo.name ||
+              description !== (editingGlyphInfo.description ?? "")
+            ) {
+              editGlyphInfo(editingGlyphInfo.id, { name, description });
             }
             setEditingGlyphInfo(null);
+          }}
+        />
+      )}
+      {deletingGlyph && (
+        <GlyphDeleteDialog
+          name={deletingGlyph.name}
+          onClose={() => setDeletingGlyph(null)}
+          onConfirm={() => {
+            removeGlyph(deletingGlyph.id);
+            setDeletingGlyph(null);
+            setToast("已删除字符");
           }}
         />
       )}
