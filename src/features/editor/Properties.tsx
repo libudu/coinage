@@ -3,7 +3,6 @@ import { useRef } from "react";
 import { clamp, distance } from "../../core/geometry";
 import type { Glyph, Knot, Project, Stroke } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
-import { GlyphPreview } from "./GlyphPreview";
 import { BrushControls } from "./BrushControls";
 import { IconButton, NumberField, Section, segmentedStateClasses } from "../../shared/components/controls";
 import type { useProject } from "../project/useProject";
@@ -116,7 +115,7 @@ export function Properties({
                 ? `#${String(Object.keys(glyph.nodes).indexOf(node.id) + 1).padStart(2, "0")}`
                 : stroke
                   ? `${stroke.nodes.length} 节点`
-                  : `${glyph.strokes.length} 笔画`}
+                  : `${glyph.strokes.length} 笔画 / ${Object.keys(glyph.nodes).length} 节点`}
             </span>
           }
         >
@@ -174,11 +173,7 @@ export function Properties({
               disabled={locked}
               onChange={(e) => changeStroke({ name: e.target.value })}
             />
-          ) : (
-            <div className="glyph-inspector-preview bg-[#f0f3e9] rounded-[6px] h-[115px] grid place-items-center [&>svg]:h-[110px] [&>svg]:w-[110px]">
-              <GlyphPreview glyph={glyph} brush={doc.project.brush} />
-            </div>
-          )}
+          ) : null}
         </Section>
         {(node || stroke) && (
           <Section

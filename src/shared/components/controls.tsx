@@ -49,8 +49,8 @@ export function Section({
   return (
     <section className="panel-section py-[22px] px-[20px] border-b [border-bottom-style:solid] border-b-[var(--border)] last:[border-bottom:0]
       wide:p-[25px] laptop:py-[20px] laptop:px-[16px] tablet:py-[18px] tablet:px-[14px]">
-      <div className="section-heading flex items-center justify-between mb-[19px] gap-[8px] [&_h3]:text-[12px]
-        [&_h3]:font-semibold [&_h3]:m-0 [&_h3]:tracking-[0.5px]">
+      <div className={`section-heading flex items-center justify-between ${children ? "mb-[19px]" : ""} gap-[8px] [&_h3]:text-[12px]
+        [&_h3]:font-semibold [&_h3]:m-0 [&_h3]:tracking-[0.5px]`}>
         <h3>{title}</h3>
         {trailing}
       </div>

@@ -37,8 +37,7 @@ export function EditorCanvas({
   const stage = useRef<HTMLDivElement>(null),
     svg = useRef<SVGSVGElement>(null);
   const [viewport, setViewport] = useState({ width: 800, height: 700 });
-  const node = nodeId ? glyph.nodes[nodeId] : undefined,
-    stroke = glyph.strokes.find((s) => s.id === strokeId),
+  const stroke = glyph.strokes.find((s) => s.id === strokeId),
     scale = fit * zoom;
   const interaction = useCanvasInteraction({
     doc,
@@ -381,20 +380,8 @@ export function EditorCanvas({
             <span>松开以导入图片</span>
           </div>
         )}
-        <div className="canvas-bottom absolute bottom-[23px] left-[43px] right-[24px] flex items-center justify-between
+        <div className="canvas-bottom absolute bottom-[23px] left-[43px] right-[24px] flex items-center justify-end
           pointer-events-none tablet:left-[34px] tablet:right-[14px] phone:left-[29px] phone:right-[10px]">
-          <div className="mode-indicator flex items-center gap-[7px] text-[#839174] text-[10px] tablet:text-[9px] phone:text-[0px]">
-            <span className="mode-dot w-[5px] h-[5px] bg-[#8fa36b] rounded-[50%]" />
-            {preview
-              ? "预览模式"
-              : tool === "select"
-                ? "节点编辑"
-                : tool === "pen"
-                  ? "绘制笔画"
-                  : tool === "branch"
-                    ? "拉出笔画"
-                    : "移动画布"}
-          </div>
           <div className="zoom-control flex items-center bg-[#fcfdf8] border [border-style:solid] border-[#dfe5d6] rounded-[7px]
             py-[3px] px-[4px] pointer-events-auto shadow-[0_2px_5px_#43502e03] [&_.icon-button]:w-[28px]
             [&_.icon-button]:h-[27px] [&_.icon-button>svg]:w-[14px] [&_.icon-button>svg]:h-[14px] [&>span]:h-[16px]
@@ -418,24 +405,6 @@ export function EditorCanvas({
           </div>
         </div>
       </div>
-      <footer className="editor-status min-h-[33px] border-t [border-top-style:solid] border-t-[#dfe5d5] flex items-center
-        justify-between py-0 px-[21px] bg-[#f7f9f1] text-[#8d9882] text-[9px]
-        [font-family:ui-monospace,_'Microsoft_YaHei',_monospace] [&>span]:flex [&>span]:items-center
-        [&>span]:gap-[7px] compact:py-0 compact:px-[11px] compact:text-[8px] compact:[&>span]:gap-[4px]">
-        <span>
-          <span className="status-green-dot inline-block w-[4px] h-[4px] rounded-[50%] bg-[#8eab70] shrink-0 mr-[1px]" />
-          {glyph.strokes.length} 笔画<span className="status-separator text-[#b6beac] py-0 px-[4px]">/</span>
-          {Object.keys(glyph.nodes).length} 节点
-        </span>
-        <span>
-          {nodeIds.length > 1
-            ? `已选 ${nodeIds.length} 个节点`
-            : node
-            ? `X ${Math.round(node.x)}　Y ${Math.round(node.y)}`
-            : "640 × 640 px"}
-          <span className="status-separator text-[#b6beac] py-0 px-[4px]">·</span>SVG
-        </span>
-      </footer>
     </main>
   );
 }
