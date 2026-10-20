@@ -49,7 +49,7 @@ export function Section({
   return (
     <section className="panel-section py-[22px] px-[20px] border-b [border-bottom-style:solid] border-b-[var(--border)] last:[border-bottom:0]
       wide:p-[25px] laptop:py-[20px] laptop:px-[16px] tablet:py-[18px] tablet:px-[14px]">
-      <div className={`section-heading flex items-center justify-between ${children ? "mb-[19px]" : ""} gap-[8px] [&_h3]:text-[12px]
+      <div className={`section-heading flex items-center justify-between ${children ? "mb-[19px]" : ""} gap-[8px]
         [&_h3]:font-semibold [&_h3]:m-0 [&_h3]:tracking-[0.5px]`}>
         <h3>{title}</h3>
         {trailing}
@@ -77,10 +77,10 @@ export function NumberField({
 }) {
   return (
     <label className="number-field flex items-center gap-[8px] bg-[#f0f3ea] border [border-style:solid] border-[#e7ecdf]
-      rounded-[5px] h-[33px] py-0 px-[9px] min-w-0 [&>span]:text-[10px] [&>span]:text-[#77856a]
+      rounded-[5px] h-[33px] py-0 px-[9px] min-w-0 [&>span]:text-[12px] [&>span]:text-[#77856a]
       [&>span]:shrink-0 [&>input]:w-full [&>input]:min-w-0 [&>input]:bg-[transparent] [&>input]:[border:0]
-      [&>input]:[font-family:ui-monospace,_monospace] [&>input]:text-[11px] [&>input]:text-[#5c6e4d]
-      [&>input]:text-right [&>input]:p-0 [&>small]:text-[9px] [&>small]:text-[#9ba68e]">
+      [&>input]:[font-family:ui-monospace,_monospace] [&>input]:text-[12px] [&>input]:text-[#5c6e4d]
+      [&>input]:text-right [&>input]:p-0 [&>small]:text-[12px] [&>small]:text-[#9ba68e]">
       <span>{label}</span>
       <input
         aria-label={label}

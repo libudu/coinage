@@ -126,7 +126,7 @@ export function ImportDialog({
         <div className="modal-heading flex items-center justify-between mb-[23px] [&_h2]:text-[20px] [&_h2]:tracking-[1px]
           [&_h2]:font-semibold [&_h2]:mt-[5px] [&_h2]:mx-0 [&_h2]:mb-0">
           <div>
-            <span className="eyebrow text-[10px] text-[#8a987d]">导入</span>
+            <span className="eyebrow text-[12px] text-[#8a987d]">导入</span>
             <h2 id="import-title">图片转笔画</h2>
           </div>
           <button
@@ -142,18 +142,18 @@ export function ImportDialog({
           <div className="trace-preview bg-[#fbfbf8] border [border-style:solid] border-[#dfe5d5] rounded-[8px] overflow-hidden flex
             flex-col justify-between [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[340px]
             [&>svg]:object-contain [&>span]:block [&>span]:text-center [&>span]:py-[11px] [&>span]:px-[15px]
-            [&>span]:text-[10px] [&>span]:text-[#859575] [&>span]:border-t [&>span]:[border-top-style:solid]
+            [&>span]:text-[12px] [&>span]:text-[#859575] [&>span]:border-t [&>span]:[border-top-style:solid]
             [&>span]:border-t-[#e6ebde] [&>span]:whitespace-nowrap [&>span]:text-ellipsis [&>span]:overflow-hidden
-            [&>span]:max-w-full compact:[&>span]:text-[9px] phone:max-h-[220px] phone:[&>svg]:h-[190px]">
+            [&>span]:max-w-full phone:max-h-[220px] phone:[&>svg]:h-[190px]">
             <svg viewBox="0 0 640 640" width="420" height="420" role="img" aria-label="导入字形预览" aria-busy={busy}>
               {preview && <path d={glyphPath(preview.glyph, brush)} fill={preview.glyph.color} opacity={busy ? 0.4 : 1} />}
             </svg>
             <span>{source.name}</span>
           </div>
           <div className="trace-controls py-[5px] px-0 phone:p-0">
-            <label className="field-title block text-[#77856a] text-[10px] mb-[10px]">前景颜色</label>
+            <label className="field-title block text-[#77856a] text-[12px] mb-[10px]">前景颜色</label>
             <div className={`segmented flex border [border-style:solid] border-[#e2e8d9] rounded-[6px] p-[3px] bg-[#f1f4eb] gap-[3px]
-              [&>button]:flex-1 [&>button]:min-w-0 [&>button]:py-[7px] [&>button]:px-[4px] [&>button]:text-[11px]
+              [&>button]:flex-1 [&>button]:min-w-0 [&>button]:py-[7px] [&>button]:px-[4px] [&>button]:text-[12px]
               [&>button]:rounded-[3px] [&>button]:text-[#87957b] [&>button]:flex [&>button]:justify-center
               [&>button]:items-center [&>button]:gap-[6px] ${segmentedStateClasses}`}>
               <button
@@ -169,8 +169,8 @@ export function ImportDialog({
                 浅色
               </button>
             </div>
-            <label className="range-label flex justify-between items-center text-[#88967a] text-[11px] mt-[26px] mx-0 mb-[15px]
-              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[11px] [&>b]:font-medium
+            <label className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[26px] mx-0 mb-[15px]
+              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[12px] [&>b]:font-medium
               phone:mt-[20px]">
               识别阈值 <b>{options.threshold}</b>
             </label>
@@ -183,8 +183,8 @@ export function ImportDialog({
                 setOptions({ ...options, threshold: +e.target.value })
               }
             />
-            <label className="range-label flex justify-between items-center text-[#88967a] text-[11px] mt-[26px] mx-0 mb-[15px]
-              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[11px] [&>b]:font-medium
+            <label className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[26px] mx-0 mb-[15px]
+              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[12px] [&>b]:font-medium
               phone:mt-[20px]">
               路径简化 <b>{options.simplify.toFixed(1)}</b>
             </label>
@@ -198,8 +198,8 @@ export function ImportDialog({
                 setOptions({ ...options, simplify: +e.target.value })
               }
             />
-            <label className="range-label flex justify-between items-center text-[#88967a] text-[11px] mt-[26px] mx-0 mb-[15px]
-              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[11px] [&>b]:font-medium
+            <label className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[26px] mx-0 mb-[15px]
+              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[12px] [&>b]:font-medium
               phone:mt-[20px]">
               去除杂点 <b>{options.noise}</b>
             </label>
@@ -212,8 +212,8 @@ export function ImportDialog({
                 setOptions({ ...options, noise: +e.target.value })
               }
             />
-            <label className="range-label flex justify-between items-center text-[#88967a] text-[11px] mt-[26px] mx-0 mb-[15px]
-              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[11px] [&>b]:font-medium
+            <label className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[26px] mx-0 mb-[15px]
+              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[12px] [&>b]:font-medium
               phone:mt-[20px]">
               笔画粗细 <b>{options.thickness}%</b>
             </label>
@@ -225,7 +225,7 @@ export function ImportDialog({
               value={options.thickness}
               onChange={(e) => setOptions({ ...options, thickness: +e.target.value })}
             />
-            <label className="checkbox-label flex items-center gap-[8px] text-[11px] text-[#81936f] mt-[29px] [&_input]:accent-[#577344]">
+            <label className="checkbox-label flex items-center gap-[8px] text-[12px] text-[#81936f] mt-[29px] [&_input]:accent-[#577344]">
               <input
                 type="checkbox"
                 checked={options.colorOnly}

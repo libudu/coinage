@@ -145,14 +145,14 @@ export default function App() {
             </svg>
           </span>
           <span>
-            造字<span className="brand-latin block text-[8px] tracking-[2.15px] mt-[6px] font-semibold text-[#7e897c] tablet:text-[7px]">COINAGE</span>
+            造字<span className="brand-latin block text-[12px] tracking-[2.15px] mt-[6px] font-semibold text-[#7e897c]">COINAGE</span>
           </span>
         </div>
         <div className="document-title flex items-center gap-[12px] [&>input]:w-[145px] [&>input]:[border:0]
           [&>input]:bg-[transparent] [&>input]:text-[13px] [&>input]:text-[#586052] [&>input]:py-[7px]
           [&>input]:px-0 [&_.icon-button]:w-[25px] [&_.icon-button]:h-[28px] laptop:[&>input]:w-[130px]
-          laptop:gap-[7px] tablet:[&>input]:w-[107px] tablet:[&>input]:text-[11px] tablet:[&_.header-divider]:m-0
-          compact:gap-[3px] compact:[&>input]:w-[102px] compact:[&>input]:text-[11px] phone:[&>input]:hidden
+          laptop:gap-[7px] tablet:[&>input]:w-[107px] tablet:[&>input]:text-[12px] tablet:[&_.header-divider]:m-0
+          compact:gap-[3px] compact:[&>input]:w-[102px] phone:[&>input]:hidden
           phone:[&>.header-divider]:hidden phone:ml-[-6px]">
           <span className="header-divider w-[1px] h-[27px] bg-[var(--border)] mr-[6px]" />
           <input
@@ -364,9 +364,9 @@ export default function App() {
               />
             </div>
             <div className="shortcut-list flex flex-col gap-0 [&>div]:flex [&>div]:items-center [&>div]:justify-between
-              [&>div]:text-[11px] [&>div]:gap-[20px] [&>div]:min-h-[36px] [&>div]:border-b
+              [&>div]:text-[12px] [&>div]:gap-[20px] [&>div]:min-h-[36px] [&>div]:border-b
               [&>div]:[border-bottom-style:solid] [&>div]:border-b-[#e8ecdf] [&>div:last-child]:[border:0]
-              [&_kbd]:text-[#81936e] phone:[&>div]:text-[10px] phone:[&>div]:gap-[10px] phone:[&_kbd]:text-[9px]">
+              [&_kbd]:text-[#81936e] phone:[&>div]:gap-[10px]">
               {[
                 ["选择 / 钢笔 / 分支 / 平移", "V / P / B / H"],
                 ["从节点拉出新笔画", "Alt + 拖动"],
@@ -388,7 +388,7 @@ export default function App() {
               ].map(([label, key]) => (
                 <div key={label}>
                   <span>{label}</span>
-                  <kbd className="[font:10px_ui-monospace,monospace]">{key}</kbd>
+                  <kbd className="[font:12px_ui-monospace,monospace]">{key}</kbd>
                 </div>
               ))}
             </div>

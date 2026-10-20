@@ -32,10 +32,10 @@ export function GlyphSidebar({
       <div className="panel-tabs h-[62px] flex items-center justify-between py-0 px-[19px] shrink-0 text-[12px]
         font-semibold
         wide:h-[68px] wide:py-0 wide:px-[25px] tablet:py-0 tablet:px-[14px] compact:py-0
-        compact:h-[52px] compact:text-[11px] compact:px-[5px] phone:py-0 phone:px-[3px] phone:text-[10px]">
-        <span className="whitespace-nowrap">
+        compact:h-[52px] compact:px-[5px] phone:py-0 phone:px-[3px]">
+        <h3 className="m-0 whitespace-nowrap">
           字符集{" "}<span className="text-[#a0a69b] font-normal">({project.glyphs.length})</span>
-        </span>
+        </h3>
         <AddGlyphMenu addGlyph={addGlyph} importGlyph={importGlyph} />
       </div>
       <div className="glyph-list pt-0 px-[12px] pb-[19px] flex flex-col gap-[8px] max-h-[46%] overflow-auto shrink-0 wide:pt-0
@@ -63,10 +63,9 @@ export function GlyphSidebar({
             </div>
             <span className="glyph-card-text min-w-0 flex flex-col gap-[8px] [&_strong]:text-[12px] [&_strong]:font-[550]
               [&_strong]:max-w-[95px] [&_strong]:whitespace-nowrap [&_strong]:overflow-hidden [&_strong]:text-ellipsis
-              [&_small]:[font-family:ui-monospace,_monospace] [&_small]:text-[10px] [&_small]:text-[#929a89]
+              [&_small]:[font-family:ui-monospace,_monospace] [&_small]:text-[12px] [&_small]:text-[#929a89]
               wide:[&_strong]:max-w-[110px] laptop:[&_strong]:max-w-[75px] tablet:[&_strong]:max-w-[62px]
-              tablet:[&_strong]:text-[11px] tablet:gap-[5px] compact:[&_strong]:max-w-[61px]
-              compact:[&_strong]:text-[10px] compact:[&_small]:hidden">
+              tablet:gap-[5px] compact:[&_strong]:max-w-[61px] compact:[&_small]:hidden">
               <strong>{g.name}</strong>
               <small>{String(index + 1).padStart(2, "0")}</small>
             </span>
@@ -79,7 +78,7 @@ export function GlyphSidebar({
         [&>.section-heading]:mb-[13px] laptop:pl-[9px] laptop:pr-[9px] compact:pt-[16px] compact:px-[6px]
         compact:pb-[8px] compact:[&>.section-heading]:py-0 compact:[&>.section-heading]:px-[4px]">
         <div className="section-heading mb-[19px]">
-          <h3 className="m-0 whitespace-nowrap text-[12px] font-semibold compact:text-[11px] phone:text-[10px]">
+          <h3 className="m-0 whitespace-nowrap font-semibold">
             笔画{" "}<span className="text-[#a0a69b] font-normal">({glyph.strokes.length})</span>
           </h3>
         </div>
@@ -93,9 +92,9 @@ export function GlyphSidebar({
             >
               <button
                 className="layer-select flex items-center gap-[7px] flex-1 min-w-0 h-full text-left [&>svg]:text-[#5f7755]
-                  [&>svg]:shrink-0 [&_span]:text-[11px] [&_span]:overflow-hidden [&_span]:text-ellipsis
+                  [&>svg]:shrink-0 [&_span]:text-[12px] [&_span]:overflow-hidden [&_span]:text-ellipsis
                   [&_span]:whitespace-nowrap [&_small]:hidden tablet:gap-[3px] tablet:[&>svg]:w-[20px]
-                  tablet:[&_span]:text-[10px] compact:gap-[3px] compact:[&_span]:text-[9px] compact:[&>svg]:w-[18px]"
+                  compact:gap-[3px] compact:[&>svg]:w-[18px]"
                 onClick={() => select(null, s.id)}
               >
                 <svg width="26" height="26" viewBox="0 0 640 640">
@@ -140,7 +139,7 @@ export function GlyphSidebar({
             </div>
           ))}
           {!glyph.strokes.length && (
-            <div className="empty-layer flex items-center justify-center h-full text-[12px] text-[#afb4aa] compact:text-[10px]">
+            <div className="empty-layer flex items-center justify-center h-full text-[12px] text-[#afb4aa]">
               暂无笔画
             </div>
           )}

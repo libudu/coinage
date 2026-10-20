@@ -98,7 +98,7 @@ export function Properties({
         <Section
           title={node ? "节点" : stroke ? "笔画" : "字符"}
           trailing={
-            <span className="selection-badge py-[3px] px-[7px] text-[9px] bg-[#eff2e8] text-[#839171] border [border-style:solid]
+            <span className="selection-badge py-[3px] px-[7px] text-[12px] bg-[#eff2e8] text-[#839171] border [border-style:solid]
               border-[#e3e8da] rounded-[4px] [font-family:ui-monospace,_'Microsoft_YaHei',_monospace]">
               {multiple ? `${nodes.length} 节点` : node
                 ? `#${String(Object.keys(glyph.nodes).indexOf(node.id) + 1).padStart(2, "0")}`
@@ -124,11 +124,11 @@ export function Properties({
                   disabled={locked}
                 />
               </div>
-              <label className="field-title spaced block text-[#77856a] text-[10px] mb-[10px] mt-[19px]">节点类型</label>
+              <label className="field-title spaced block text-[#77856a] text-[12px] mb-[10px] mt-[19px]">节点类型</label>
               <div className="node-type-options grid grid-cols-[repeat(3,_1fr)] gap-[7px] [&>button]:flex [&>button]:flex-col
                 [&>button]:items-center [&>button]:justify-center [&>button]:gap-[8px] [&>button]:h-[60px]
                 [&>button]:border [&>button]:[border-style:solid] [&>button]:border-[#e1e7d9] [&>button]:rounded-[6px]
-                [&>button]:text-[#91a082] [&>button]:text-[10px] [&>button]:bg-[#f9fbf4] [&>button.active]:border-[#adc28b] [&>button.active]:bg-[#e9f0dc] [&>button.active]:text-[#55743e]! [&>button:hover]:bg-[#eff4e6] [&>button.active:hover]:bg-[#eff4e6]">
+                [&>button]:text-[#91a082] [&>button]:text-[12px] [&>button]:bg-[#f9fbf4] [&>button.active]:border-[#adc28b] [&>button.active]:bg-[#e9f0dc] [&>button.active]:text-[#55743e]! [&>button:hover]:bg-[#eff4e6] [&>button.active:hover]:bg-[#eff4e6]">
                 {(
                   [
                     { mode: "corner", icon: "corner", label: "转角" },
@@ -168,7 +168,7 @@ export function Properties({
           <Section
             title="笔画粗细"
             trailing={
-              <span className="subtle-label text-[9px] text-[#77856a]">
+              <span className="subtle-label text-[12px] text-[#77856a]">
                 {multiple ? "所选节点" : node ? "当前节点" : "整条笔画"}
               </span>
             }
@@ -218,7 +218,7 @@ export function Properties({
                 widthGesture.current = null;
               }}
             />
-            <div className="range-scale flex justify-between text-[#77856a] text-[9px] mt-[5px]">
+            <div className="range-scale flex justify-between text-[#77856a] text-[12px] mt-[5px]">
               <span>细</span>
               <span>粗</span>
             </div>
@@ -226,13 +226,13 @@ export function Properties({
         )}
         {(node || stroke) && (
           <Section title="转折">
-            <label className="field-title block text-[#77856a] text-[10px] mb-[10px]">转折方式</label>
+            <label className="field-title block text-[#77856a] text-[12px] mb-[10px]">转折方式</label>
             <div className={`segmented shape-options flex border [border-style:solid] border-[#e2e8d9] rounded-[6px] p-[3px]
               bg-[#f1f4eb] gap-[3px] [&>button]:flex-1 [&>button]:min-w-0 [&>button]:py-[7px] [&>button]:px-[4px]
-              [&>button]:text-[11px] [&>button]:rounded-[3px] [&>button]:text-[#87957b] [&>button]:flex
+              [&>button]:text-[12px] [&>button]:rounded-[3px] [&>button]:text-[#87957b] [&>button]:flex
               [&>button]:justify-center [&>button]:items-center [&>button]:gap-[6px] [&.shape-options>button]:flex-col
               [&.shape-options>button]:gap-[7px] [&.shape-options>button]:py-[8px] [&.shape-options>button]:px-[2px]
-              [&.shape-options>button]:text-[9px] [&.shape-options>button>svg]:w-[20px]
+              [&.shape-options>button]:text-[12px] [&.shape-options>button>svg]:w-[20px]
               [&.shape-options>button>svg]:h-[20px] [&.shape-options>button]:text-[#77856a] ${segmentedStateClasses}`}>
               {(["miter", "round", "bevel"] as const).map((join, i) => (
                 <button
@@ -264,7 +264,7 @@ export function Properties({
         )}
         <BrushControls doc={doc} />
         <Section title="外观">
-          <div className="color-row flex items-center gap-[10px] [font-family:ui-monospace,_monospace] text-[10px] bg-[#f1f4eb]
+          <div className="color-row flex items-center gap-[10px] [font-family:ui-monospace,_monospace] text-[12px] bg-[#f1f4eb]
             border [border-style:solid] border-[#e6ebdd] rounded-[5px] h-[35px] py-0 px-[8px] text-[#748464]">
             <label className="color-swatch block w-[19px] h-[19px] rounded-[4px] border [border-style:solid] border-[#0000000a]
               overflow-hidden cursor-pointer [&>input]:w-[40px] [&>input]:h-[40px] [&>input]:m-[-9px]
@@ -281,7 +281,7 @@ export function Properties({
               />
             </label>
             <span>{glyph.color.toUpperCase()}</span>
-            <span className="color-opacity ml-auto text-[9px] text-[#96a287] border-l [border-left-style:solid] border-l-[#dfe6d4] pl-[10px]">100%</span>
+            <span className="color-opacity ml-auto text-[12px] text-[#96a287] border-l [border-left-style:solid] border-l-[#dfe6d4] pl-[10px]">100%</span>
           </div>
           <div className="preset-colors flex gap-[12px] mt-[13px] p-[2px] [&>button]:w-[17px] [&>button]:h-[17px]
             [&>button]:rounded-[50%] [&>button]:border-[2px] [&>button]:[border-style:solid]
@@ -320,8 +320,8 @@ export function Properties({
               />
             }
           >
-            <div className="range-label flex justify-between items-center text-[#88967a] text-[11px] mt-[26px] mx-0 mb-[15px]
-              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[11px] [&>b]:font-medium
+            <div className="range-label flex justify-between items-center text-[#88967a] text-[12px] mt-[26px] mx-0 mb-[15px]
+              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[12px] [&>b]:font-medium
               phone:mt-[20px]">
               不透明度<b>{glyph.referenceOpacity}%</b>
             </div>

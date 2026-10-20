@@ -177,7 +177,7 @@ export function EditorCanvas({
           />
           <div
             className={`save-state ${doc.saved === "error" ? "error" : ""} flex items-center min-w-0 gap-[7px] ml-[10px]
-              text-[#8b9386] text-[11px] whitespace-nowrap compact:hidden [&.error]:text-[#a04c32]
+              text-[#8b9386] text-[12px] whitespace-nowrap compact:hidden [&.error]:text-[#a04c32]
               [&.error_.save-dot]:bg-[#b76548]`}
             role="status"
           >
@@ -195,8 +195,8 @@ export function EditorCanvas({
           [&_.icon-button>svg]:w-[15px] [&_.icon-button>svg]:h-[15px] tablet:gap-[1px]
           phone:[&_.mini-divider]:hidden phone:[&_.icon-button]:w-[25px]">
           <button
-            className={`view-button ${preview ? "active" : ""} gap-[6px] items-center text-[11px] text-[#7a8671] py-[6px] px-[9px]
-              rounded-[4px] flex phone:p-[5px] phone:text-[10px] [&.active]:bg-[#e7eddf] [&.active]:text-[#385e3d]`}
+            className={`view-button ${preview ? "active" : ""} gap-[6px] items-center text-[12px] text-[#7a8671] py-[6px] px-[9px]
+              rounded-[4px] flex phone:p-[5px] [&.active]:bg-[#e7eddf] [&.active]:text-[#385e3d]`}
             onClick={() => setPreview((v) => !v)}
           >
             <Icon name="eye" size={16} />
@@ -272,7 +272,7 @@ export function EditorCanvas({
         <div
           className="ruler ruler-horizontal absolute z-[5] pointer-events-none text-[#a9b19d] bg-[#f2f4ed] flex justify-around
             overflow-hidden h-[22px] left-[22px] right-0 top-0 border-b [border-bottom-style:solid] border-b-[#e3e7db]
-            items-start pt-[3px] [font:8px_ui-monospace,monospace]"
+            items-start pt-[3px] [font:12px_ui-monospace,monospace]"
           aria-hidden="true"
           style={{
             backgroundPositionX: rulerX,
@@ -293,7 +293,7 @@ export function EditorCanvas({
         <div
           className="ruler ruler-vertical absolute z-[5] pointer-events-none text-[#a9b19d] bg-[#f2f4ed] flex justify-around
             overflow-hidden w-[22px] top-[22px] bottom-0 left-0 border-r [border-right-style:solid] border-r-[#e3e7db]
-            flex-col items-center [font:8px_ui-monospace,monospace] [&_span]:[writing-mode:vertical-rl] [&_span]:[transform:rotate(180deg)]"
+            flex-col items-center [font:12px_ui-monospace,monospace] [&_span]:[writing-mode:vertical-rl] [&_span]:[transform:rotate(180deg)]"
           aria-hidden="true"
           style={{
             backgroundPositionY: rulerY,
@@ -347,11 +347,10 @@ export function EditorCanvas({
             transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
           }}
         >
-          <div className="artboard-label absolute top-[-23px] left-0 right-0 flex justify-between text-[10px] text-[#8d9880]
+          <div className="artboard-label absolute top-[-23px] left-0 right-0 flex justify-between text-[12px] text-[#8d9880]
             pointer-events-none gap-[15px] [&>span:last-child]:[font-family:ui-monospace,_monospace]
-            [&>span:last-child]:text-[9px] [&>span:last-child]:tracking-[0.5px] [&>span:first-child]:whitespace-nowrap
-            [&>span:first-child]:overflow-hidden [&>span:first-child]:text-ellipsis [&>span:last-child]:shrink-0
-            compact:text-[9px]">
+            [&>span:last-child]:tracking-[0.5px] [&>span:first-child]:whitespace-nowrap
+            [&>span:first-child]:overflow-hidden [&>span:first-child]:text-ellipsis [&>span:last-child]:shrink-0">
             <span>{glyph.name}</span>
             <span>640 × 640</span>
           </div>
@@ -402,7 +401,7 @@ export function EditorCanvas({
               title="缩小"
               onClick={() => setZoom((z) => clamp(z / 1.2, 0.25, 4))}
             />
-            <button className="zoom-value text-[#77866b] min-w-[43px] h-[26px] tablet:min-w-[35px] [font:10px_ui-monospace,monospace]" onClick={reset}>
+            <button className="zoom-value text-[#77866b] min-w-[43px] h-[26px] tablet:min-w-[35px] [font:12px_ui-monospace,monospace]" onClick={reset}>
               {Math.round(zoom * 100)}%
             </button>
             <IconButton
