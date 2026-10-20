@@ -124,10 +124,10 @@ export function tipIsConnected(g: Glyph, stroke: Stroke, end: "start" | "end") {
   );
 }
 
-export function outlinePath(g: Glyph, stroke: Stroke, defaults?: BrushDefaults): string {
+function outlinePolygons(g: Glyph, stroke: Stroke, defaults?: BrushDefaults): Point[][] {
   const brush = defaults ?? defaultBrush;
   let points = samples(g, stroke);
-  if (points.length < 2) return "";
+  if (points.length < 2) return [];
   const closed =
     stroke.nodes.length > 2 &&
     stroke.nodes[0] === stroke.nodes[stroke.nodes.length - 1];
@@ -228,10 +228,7 @@ export function outlinePath(g: Glyph, stroke: Stroke, defaults?: BrushDefaults):
         });
     }
   });
-  const path = (poly: Point[]) =>
-    poly.map((p, i) => `${i ? "L" : "M"}${fmt(p.x)},${fmt(p.y)}`).join(" ") +
-    "Z";
-  if (closed) return path(left) + " " + path(right.reverse());
+  if (closed) return [left, right.reverse()];
   const first = points[0],
     last = points[points.length - 1],
     end = norm(points[points.length - 2], last),
@@ -246,7 +243,28 @@ export function outlinePath(g: Glyph, stroke: Stroke, defaults?: BrushDefaults):
     polygon.push(
       ...arc(first, first.width / 2, Math.atan2(-start.x, start.y), -Math.PI),
     );
-  return path(polygon);
+  return [polygon];
+}
+
+export function outlinePath(g: Glyph, stroke: Stroke, defaults?: BrushDefaults): string {
+  return outlinePolygons(g, stroke, defaults)
+    .map((poly) => poly.map((p, i) => `${i ? "L" : "M"}${fmt(p.x)},${fmt(p.y)}`).join(" ") + "Z")
+    .join(" ");
+}
+
+export function glyphBounds(g: Glyph, defaults?: BrushDefaults) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const stroke of g.strokes) {
+    if (!stroke.visible) continue;
+    for (const polygon of outlinePolygons(g, stroke, defaults))
+      for (const p of polygon) {
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x);
+        maxY = Math.max(maxY, p.y);
+      }
+  }
+  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
 }
 // Fill connected outlines together so antialiasing cannot expose their seams.
 export function glyphPath(g: Glyph, defaults?: BrushDefaults): string {

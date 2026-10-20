@@ -348,6 +348,7 @@ export default function App() {
       </div>
       {source && (
         <ImportDialog
+          brush={project.brush}
           source={source}
           onClose={() => setSource(null)}
           onImport={(g) => {

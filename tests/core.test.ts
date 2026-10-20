@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { controls, glyphPath, outlinePath, tipIsConnected } from "../src/core/geometry";
+import { controls, glyphBounds, glyphPath, outlinePath, tipIsConnected } from "../src/core/geometry";
 import { demoProject } from "../src/core/demo";
 import { emptyGlyph, newStroke } from "../src/core/model";
 import { exportSvg } from "../src/core/svg";
 import { isProject } from "../src/core/validation";
-import { defaultTrace, makeMask, traceRaster } from "../src/features/tracing/trace";
+import { defaultTrace, makeMask, traceRaster, traceRasterWithPlacement } from "../src/features/tracing/trace";
+import { loadTraceOptions, saveTraceOptions } from "../src/features/tracing/traceSettings";
 import type { Raster } from "../src/features/tracing/trace";
 import type { Point, Project } from "../src/core/model";
 import { brushPresets, changeGlobalBrush, defaultBrush, migrateProjectBrush } from "../src/core/brush";
@@ -120,6 +121,95 @@ test("straight strokes retain width and produce editable endpoints", () => {
   for (const n of Object.values(g.nodes))
     assert.ok(n.width > 90 && n.width < 115);
   assert.ok(!/NaN|Infinity/.test(exportSvg(g)));
+});
+
+test("import thickness scales local widths while retaining relative geometry and shared nodes", () => {
+  const input = raster(180, 180, (x, y) =>
+    (x >= 28 && x < 36 && y >= 20 && y < 100) ||
+    (y >= 56 && y < 64 && x >= 12 && x < 110),
+  );
+  const original = traceRasterWithPlacement(input, defaultTrace, "cross");
+  for (const thickness of [25, 50, 150, 250]) {
+    const result = traceRasterWithPlacement(input, { ...defaultTrace, thickness }, "cross");
+    const before = Object.values(original.glyph.nodes), after = Object.values(result.glyph.nodes);
+    assert.equal(after.length, before.length);
+    assert.equal(result.glyph.strokes.length, original.glyph.strokes.length);
+    after.forEach((node, i) => {
+      assert.equal(node.width, Math.max(2, Math.min(200, before[i].width * thickness / 100)));
+      assert.ok(Math.abs(node.x - after[0].x - (before[i].x - before[0].x)) < 1e-8);
+      assert.ok(Math.abs(node.y - after[0].y - (before[i].y - before[0].y)) < 1e-8);
+      assert.ok(Math.abs(node.x - result.referenceOffset.x * 640 / input.width
+        - (before[i].x - original.referenceOffset.x * 640 / input.width)) < 1e-8);
+    });
+    const counts = new Map<string, number>();
+    result.glyph.strokes.flatMap((s) => s.nodes).forEach((id) => counts.set(id, (counts.get(id) || 0) + 1));
+    assert.ok([...counts.values()].includes(4));
+  }
+});
+
+test("import centers the combined outline, keeps separate strokes in place and aligns the reference", () => {
+  for (const [w, h] of [[180, 180], [220, 140], [140, 220]]) {
+    const input = raster(w, h, (x, y) =>
+      (x >= 15 && x < 100 && y >= 20 && y < 30) ||
+      (x >= 65 && x < 125 && y >= 65 && y < 83),
+    );
+    const brush = {
+      ...defaultBrush, startTip: "horizontal" as const,
+      startBrush: { length: 180, spread: 160 },
+    };
+    for (const config of [defaultBrush, brush]) {
+      const { glyph: g, referenceOffset } = traceRasterWithPlacement(input, defaultTrace, "offset", config);
+      assert.equal(g.strokes.length, 2);
+      const bounds = glyphBounds(g, config)!;
+      assert.ok(Math.abs((bounds.minX + bounds.maxX) / 2 - 320) < 1e-8);
+      assert.ok(Math.abs((bounds.minY + bounds.maxY) / 2 - 320) < 1e-8);
+      const nodes = Object.values(g.nodes);
+      assert.ok(Math.abs(nodes.reduce((sum, n) => sum + n.x, 0) / nodes.length - 320) > 5);
+      const scale = 640 / Math.max(w, h);
+      // Undoing the reference translation returns nodes to the source image's ink.
+      for (const node of nodes) {
+        const x = Math.round((node.x - (640 - w * scale) / 2) / scale - referenceOffset.x);
+        const y = Math.round((node.y - (640 - h * scale) / 2) / scale - referenceOffset.y);
+        assert.equal(input.pixels[(y * w + x) * 4], 0);
+      }
+    }
+  }
+});
+
+test("discarded noise does not affect import centering", () => {
+  const shape = (x: number, y: number) => x > 20 && x < 110 && y > 25 && y < 40;
+  const clean = traceRaster(raster(160, 160, shape), defaultTrace, "clean");
+  const noisy = traceRaster(raster(160, 160, (x, y) => shape(x, y) || (x === 150 && y === 150)), defaultTrace, "noise");
+  assert.deepEqual(Object.values(noisy.nodes).map(({ x, y, width }) => ({ x, y, width })),
+    Object.values(clean.nodes).map(({ x, y, width }) => ({ x, y, width })));
+});
+
+test("import options persist separately and older configurations get default thickness", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+  };
+  assert.deepEqual(loadTraceOptions(storage), defaultTrace);
+  const options = { ...defaultTrace, threshold: 180, simplify: 4, noise: 25, thickness: 150,
+    polarity: "light" as const, colorOnly: true };
+  saveTraceOptions(options, storage);
+  assert.deepEqual(loadTraceOptions(storage), options);
+  assert.equal(values.size, 1);
+  assert.ok(!values.has("coinage.studio.v1"));
+  const older: Partial<typeof options> = { ...options };
+  delete older.thickness;
+  storage.setItem("coinage.trace.v1", JSON.stringify(older));
+  assert.deepEqual(loadTraceOptions(storage), { ...options, thickness: 100 });
+});
+
+test("invalid or unavailable import settings safely fall back to defaults", () => {
+  for (const value of ["{", "null", "[]", "42", JSON.stringify({ threshold: -1, simplify: "3",
+    noise: 101, thickness: 0, polarity: "unknown", colorOnly: 1 })]) {
+    assert.deepEqual(loadTraceOptions({ getItem: () => value }), defaultTrace);
+  }
+  assert.deepEqual(loadTraceOptions({ getItem: () => { throw new Error("blocked"); } }), defaultTrace);
+  assert.doesNotThrow(() => saveTraceOptions(defaultTrace, { setItem: () => { throw new Error("quota"); } }));
 });
 test("crossing strokes share a junction node", () => {
   const g = traceRaster(

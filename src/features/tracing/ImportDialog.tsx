@@ -1,92 +1,118 @@
 import { RangeInput } from "../../shared/components/RangeInput";
 import { buttonStateClasses, segmentedStateClasses } from "../../shared/components/controls";
-import { useEffect, useRef, useState } from "react";
-import { defaultTrace, makeMask, rasterize } from "./trace";
+import { useEffect, useState } from "react";
+import { rasterize, traceOptionLimits } from "./trace";
 import type { Raster, TraceOptions } from "./trace";
-import type { Glyph } from "../../core/model";
+import type { Glyph, Point } from "../../core/model";
+import type { BrushDefaults } from "../../core/brush";
+import { glyphPath } from "../../core/geometry";
 import { createTraceWorker } from "./createTraceWorker";
+import { loadTraceOptions, saveTraceOptions } from "./traceSettings";
 import { Icon } from "../../shared/components/Icon";
+
+function alignedReference(raster: Raster, offset: Point) {
+  const source = document.createElement("canvas"),
+    target = document.createElement("canvas");
+  source.width = target.width = raster.width;
+  source.height = target.height = raster.height;
+  const ctx = source.getContext("2d")!,
+    data = ctx.createImageData(raster.width, raster.height);
+  data.data.set(raster.pixels);
+  ctx.putImageData(data, 0, 0);
+  target.getContext("2d")!.drawImage(source, offset.x, offset.y);
+  return target.toDataURL("image/png");
+}
 
 export function ImportDialog({
   source,
+  brush,
   onClose,
   onImport,
 }: {
   source: { src: string; name: string };
+  brush?: BrushDefaults;
   onClose: () => void;
   onImport: (g: Glyph) => void;
 }) {
-  const [options, setOptions] = useState<TraceOptions>(defaultTrace),
+  const [options, setOptions] = useState<TraceOptions>(loadTraceOptions),
     [raster, setRaster] = useState<Raster | null>(null),
-    [reference, setReference] = useState(""),
-    [busy, setBusy] = useState(false),
+    [preview, setPreview] = useState<{
+      glyph: Glyph; referenceOffset: Point; options: TraceOptions; raster: Raster;
+    } | null>(null),
+    [busy, setBusy] = useState(true),
     [error, setError] = useState("");
-  const canvas = useRef<HTMLCanvasElement>(null),
-    worker = useRef<Worker | null>(null);
+  useEffect(() => saveTraceOptions(options), [options]);
   useEffect(() => {
     let alive = true;
+    setRaster(null);
+    setPreview(null);
+    setBusy(true);
+    setError("");
     rasterize(source.src)
       .then((data) => {
         if (alive) {
           setRaster(data.raster);
-          setReference(data.reference);
         }
       })
       .catch((e) => {
-        if (alive) setError(e.message);
+        if (alive) {
+          setError(e.message);
+          setBusy(false);
+        }
       });
     return () => {
       alive = false;
-      worker.current?.terminate();
     };
   }, [source]);
   useEffect(() => {
-    if (!raster || !canvas.current) return;
-    const ctx = canvas.current.getContext("2d")!,
-      mask = makeMask(raster, options),
-      data = ctx.createImageData(raster.width, raster.height);
-    for (let i = 0; i < mask.length; i++) {
-      data.data[i * 4] = mask[i] ? 36 : 251;
-      data.data[i * 4 + 1] = mask[i] ? 61 : 251;
-      data.data[i * 4 + 2] = mask[i] ? 52 : 248;
-      data.data[i * 4 + 3] = 255;
-    }
-    ctx.putImageData(data, 0, 0);
-  }, [raster, options]);
+    if (!raster) return;
+    setBusy(true);
+    setError("");
+    let worker: Worker | undefined;
+    const fail = (message: string) => {
+      setBusy(false);
+      setPreview(null);
+      setError(message);
+      worker?.terminate();
+    };
+    const timer = setTimeout(() => {
+      try {
+        worker = createTraceWorker();
+        worker.onmessage = (e) => {
+          if (e.data.error) fail(e.data.error);
+          else {
+            setPreview({ ...e.data, options, raster });
+            setBusy(false);
+            worker?.terminate();
+          }
+        };
+        worker.onerror = () => fail("转换失败，请重试。");
+        worker.postMessage({ raster, options, brush, name: source.name.replace(/\.[^.]+$/, "") });
+      } catch {
+        fail("转换失败，请重试。");
+      }
+    }, 150);
+    return () => {
+      clearTimeout(timer);
+      worker?.terminate();
+    };
+  }, [raster, options, brush, source.name]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onClose();
+      if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [busy, onClose]);
+  }, [onClose]);
   const convert = () => {
-    if (!raster || busy) return;
-    setBusy(true);
-    setError("");
-    worker.current = createTraceWorker();
-    worker.current.onmessage = (e) => {
-      setBusy(false);
-      worker.current?.terminate();
-      if (e.data.error) setError(e.data.error);
-      else onImport({ ...e.data.glyph, reference });
-    };
-    worker.current.onerror = () => {
-      setBusy(false);
-      setError("转换失败，请重试。");
-      worker.current?.terminate();
-    };
-    worker.current.postMessage({
-      raster,
-      options,
-      name: source.name.replace(/\.[^.]+$/, ""),
-    });
+    if (!raster || busy || !preview || preview.options !== options || preview.raster !== raster) return;
+    onImport({ ...preview.glyph, reference: alignedReference(raster, preview.referenceOffset) });
   };
   return (
     <div
       className="modal-backdrop fixed inset-0 z-[100] bg-[#1f30244f] backdrop-blur-[5px] flex items-center justify-center p-[30px] compact:p-[15px]"
       onPointerDown={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose();
+        if (e.target === e.currentTarget) onClose();
       }}
     >
       <section
@@ -107,7 +133,6 @@ export function ImportDialog({
             className="icon-button w-[32px] h-[32px] flex items-center justify-center rounded-[6px] text-[#798273] shrink-0 enabled:hover:bg-[#edf1e6]"
             title="关闭"
             onClick={onClose}
-            disabled={busy}
           >
             <Icon name="close" />
           </button>
@@ -115,12 +140,14 @@ export function ImportDialog({
         <div className="import-body grid grid-cols-[1fr_220px] gap-[27px] compact:grid-cols-[1fr_170px] compact:gap-[20px]
           compact:[&_.trace-preview]:self-center phone:grid-cols-[1fr] phone:gap-[20px]">
           <div className="trace-preview bg-[#fbfbf8] border [border-style:solid] border-[#dfe5d5] rounded-[8px] overflow-hidden flex
-            flex-col justify-between [&>canvas]:w-full [&>canvas]:h-auto [&>canvas]:max-h-[340px]
-            [&>canvas]:object-contain [&>span]:block [&>span]:text-center [&>span]:py-[11px] [&>span]:px-[15px]
+            flex-col justify-between [&>svg]:w-full [&>svg]:h-auto [&>svg]:max-h-[340px]
+            [&>svg]:object-contain [&>span]:block [&>span]:text-center [&>span]:py-[11px] [&>span]:px-[15px]
             [&>span]:text-[10px] [&>span]:text-[#859575] [&>span]:border-t [&>span]:[border-top-style:solid]
             [&>span]:border-t-[#e6ebde] [&>span]:whitespace-nowrap [&>span]:text-ellipsis [&>span]:overflow-hidden
-            [&>span]:max-w-full compact:[&>span]:text-[9px] phone:max-h-[220px] phone:[&>canvas]:h-[190px]">
-            <canvas ref={canvas} width="420" height="420" />
+            [&>span]:max-w-full compact:[&>span]:text-[9px] phone:max-h-[220px] phone:[&>svg]:h-[190px]">
+            <svg viewBox="0 0 640 640" width="420" height="420" role="img" aria-label="导入字形预览" aria-busy={busy}>
+              {preview && <path d={glyphPath(preview.glyph, brush)} fill={preview.glyph.color} opacity={busy ? 0.4 : 1} />}
+            </svg>
             <span>{source.name}</span>
           </div>
           <div className="trace-controls py-[5px] px-0 phone:p-0">
@@ -149,8 +176,8 @@ export function ImportDialog({
             </label>
             <RangeInput
               aria-label="识别阈值"
-              min="20"
-              max="245"
+              min={traceOptionLimits.threshold.min}
+              max={traceOptionLimits.threshold.max}
               value={options.threshold}
               onChange={(e) =>
                 setOptions({ ...options, threshold: +e.target.value })
@@ -163,8 +190,8 @@ export function ImportDialog({
             </label>
             <RangeInput
               aria-label="路径简化"
-              min=".5"
-              max="8"
+              min={traceOptionLimits.simplify.min}
+              max={traceOptionLimits.simplify.max}
               step=".5"
               value={options.simplify}
               onChange={(e) =>
@@ -178,12 +205,25 @@ export function ImportDialog({
             </label>
             <RangeInput
               aria-label="去除杂点"
-              min="0"
-              max="100"
+              min={traceOptionLimits.noise.min}
+              max={traceOptionLimits.noise.max}
               value={options.noise}
               onChange={(e) =>
                 setOptions({ ...options, noise: +e.target.value })
               }
+            />
+            <label className="range-label flex justify-between items-center text-[#88967a] text-[11px] mt-[26px] mx-0 mb-[15px]
+              [&>b]:[font-family:ui-monospace,_monospace] [&>b]:text-[#5a7446] [&>b]:text-[11px] [&>b]:font-medium
+              phone:mt-[20px]">
+              笔画粗细 <b>{options.thickness}%</b>
+            </label>
+            <RangeInput
+              aria-label="笔画粗细"
+              min={traceOptionLimits.thickness.min}
+              max={traceOptionLimits.thickness.max}
+              step="5"
+              value={options.thickness}
+              onChange={(e) => setOptions({ ...options, thickness: +e.target.value })}
             />
             <label className="checkbox-label flex items-center gap-[8px] text-[11px] text-[#81936f] mt-[29px] [&_input]:accent-[#577344]">
               <input
@@ -205,14 +245,14 @@ export function ImportDialog({
         <div className="modal-footer flex justify-end gap-[10px] pt-[25px] mt-[22px] border-t [border-top-style:solid]
           border-t-[#e4e9dc] [&_.button]:min-w-[80px] phone:pt-[17px] phone:mt-[17px]">
           <button className={`button h-[37px] py-0 px-[14px] inline-flex items-center justify-center gap-[8px] border
-            [border-style:solid] border-[#dfe4d7] rounded-[6px] bg-[#fcfdf9] text-[12px] font-[550] whitespace-nowrap ${buttonStateClasses}`} onClick={onClose} disabled={busy}>
+            [border-style:solid] border-[#dfe4d7] rounded-[6px] bg-[#fcfdf9] text-[12px] font-[550] whitespace-nowrap ${buttonStateClasses}`} onClick={onClose}>
             取消
           </button>
           <button
             className={`button primary h-[37px] py-0 px-[14px] inline-flex items-center justify-center gap-[8px] border
               [border-style:solid] border-[#dfe4d7] rounded-[6px] bg-[#fcfdf9] text-[12px] font-[550] whitespace-nowrap ${buttonStateClasses}`}
             onClick={convert}
-            disabled={!raster || busy}
+            disabled={!raster || busy || !preview || preview.options !== options || preview.raster !== raster}
           >
             {busy ? <span className="spinner w-[15px] h-[15px] border-[2px] [border-style:solid] border-[#ffffff55] rounded-[50%]
               border-t-white animate-spin [animation-duration:0.7s]" /> : <Icon name="node" />}

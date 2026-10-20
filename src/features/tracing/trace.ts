@@ -1,4 +1,6 @@
-import { clamp } from "../../core/geometry";
+import { clamp, glyphBounds } from "../../core/geometry";
+import { defaultBrush } from "../../core/brush";
+import type { BrushDefaults } from "../../core/brush";
 import { emptyGlyph, newStroke, uid } from "../../core/model";
 import type { Glyph, Point } from "../../core/model";
 export type TraceOptions = {
@@ -7,6 +9,7 @@ export type TraceOptions = {
   noise: number;
   polarity: "dark" | "light";
   colorOnly: boolean;
+  thickness: number;
 };
 export const defaultTrace: TraceOptions = {
   threshold: 155,
@@ -14,7 +17,14 @@ export const defaultTrace: TraceOptions = {
   noise: 14,
   polarity: "dark",
   colorOnly: false,
+  thickness: 100,
 };
+export const traceOptionLimits = {
+  threshold: { min: 20, max: 245 },
+  simplify: { min: 0.5, max: 8 },
+  noise: { min: 0, max: 100 },
+  thickness: { min: 25, max: 250 },
+} as const;
 export type Raster = {
   pixels: Uint8ClampedArray;
   width: number;
@@ -184,7 +194,17 @@ export function traceRaster(
   raster: Raster,
   options: TraceOptions,
   name: string,
+  brush: BrushDefaults = defaultBrush,
 ): Glyph {
+  return traceRasterWithPlacement(raster, options, name, brush).glyph;
+}
+
+export function traceRasterWithPlacement(
+  raster: Raster,
+  options: TraceOptions,
+  name: string,
+  brush: BrushDefaults = defaultBrush,
+): { glyph: Glyph; referenceOffset: Point } {
   const { width: w, height: h } = raster,
     mask = makeMask(raster, options);
   filterNoise(mask, w, h, options.noise);
@@ -231,7 +251,7 @@ export function traceRaster(
       id,
       x: (p % w) * scale + ox,
       y: Math.floor(p / w) * scale + oy,
-      width: clamp((widths[p] * 2 - 0.6) * scale, 2, 200),
+      width: clamp(clamp((widths[p] * 2 - 0.6) * scale, 2, 200) * options.thickness / 100, 2, 200),
       mode: "corner",
     };
     return id;
@@ -333,7 +353,20 @@ export function traceRaster(
   });
   if (!g.strokes.length)
     throw new Error("没有提取到有效路径，请降低去噪强度或使用更清晰的图片。");
-  return g;
+  // Translate the whole outline together, including disconnected strokes.
+  const bounds = glyphBounds(g, brush)!,
+    offset = {
+      x: 320 - (bounds.minX + bounds.maxX) / 2,
+      y: 320 - (bounds.minY + bounds.maxY) / 2,
+    };
+  for (const node of Object.values(g.nodes)) {
+    node.x += offset.x;
+    node.y += offset.y;
+  }
+  return {
+    glyph: g,
+    referenceOffset: { x: offset.x / scale, y: offset.y / scale },
+  };
 }
 
 export async function readImage(src: string): Promise<HTMLImageElement> {

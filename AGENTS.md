@@ -37,6 +37,7 @@ src/
 │   ├── tracing/
 │   │   ├── ImportDialog.tsx    # 图片导入与识别参数预览
 │   │   ├── trace.ts            # 前景分离、骨架提取、路径简化与图片读取
+│   │   ├── traceSettings.ts    # 导入参数的本地记忆与兼容读取
 │   │   ├── createTraceWorker.ts # 标准网页 Worker 工厂
 │   │   ├── createTraceWorker.offline.ts # 离线包内嵌 Worker 工厂
 │   │   └── trace.worker.ts     # 后台转换入口

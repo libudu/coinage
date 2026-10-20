@@ -23,7 +23,7 @@ npm run dev
 
 ## 使用
 
-1. 点击「导入图片」或把 PNG、JPG、WebP 拖到画布。预览中调整前景颜色、识别阈值、路径简化与去噪；彩色字形可勾选「只提取彩色笔画」过滤灰度背景。
+1. 点击「导入图片」或把 PNG、JPG、WebP 拖到画布。预览中调整前景颜色、识别阈值、路径简化、去噪与笔画粗细（25%–250%，100% 为识别出的原始粗细）；彩色字形可勾选「只提取彩色笔画」过滤灰度背景。导入参数在当前浏览器中自动记忆，重新打开或刷新后沿用。字形按全部笔画的整体轮廓包围盒中心对齐画布中心，保持笔画间相对位置，原图叠加同步平移。
 2. 选择节点后拖动位置；按住 Shift 或 Ctrl（Mac 为 Command）连续点击可多选或取消选中节点，Ctrl+A 全选当前字符中可见、未锁定的节点。多选后可整体拖动、用方向键微调、批量修改节点属性或删除；方向键每次移动 1 px，Shift+方向键移动 10 px，长按连续移动且一次撤销即可还原。整体移动到画布边界时保持节点间距。拖动节点旁的加号，或按住 Alt 拖动节点，即可创建连接的新笔画。双击笔画插入节点。
 3. 在右侧属性面板调整位置、宽度、节点类型、转折、全局笔锋、外观与原图。不选节点、只选笔画时，宽度与转折设置作用于整条笔画。右键节点或笔画可复制、翻转、旋转、删除，以及连接或拆开节点；右键字符列表中的项目可复制或删除该字符。点击菜单外或按 Esc 关闭菜单。平滑节点的两侧控制柄方向联动、长度独立；对称节点的控制柄等长。
 4. 用钢笔连续点击绘制一条笔画，点击现有节点可连接或闭合路径；Esc 结束。交汇节点由多条笔画共享，移动时保持连接。靠近另一个节点后可用「合并邻近节点」合并。
@@ -70,7 +70,7 @@ npm run dev
 
 - `src/app/`：`App.tsx` 组装工作台并管理菜单、字符切换与弹窗状态；`App.css` 仅提供提示动画关键帧。
 - `src/features/editor/`：`EditorCanvas.tsx` 管理视口与工具栏，`useCanvasInteraction.ts` 管理钢笔和拖拽历史，`GlyphArtwork.tsx` 渲染字形与节点；`GlyphSidebar.tsx` 管理字符/笔画列表，`useEditorCommands.ts` 管理编辑命令与快捷键，另含属性面板、右键菜单与字形预览。
-- `src/features/tracing/`：图片导入、前景分离、骨架提取与转换 Worker；`createTraceWorker.ts` 用于标准网页构建，离线构建通过别名使用 `createTraceWorker.offline.ts` 内嵌 Worker。
+- `src/features/tracing/`：图片导入、前景分离、骨架提取与转换 Worker，`traceSettings.ts` 记忆导入参数；`createTraceWorker.ts` 用于标准网页构建，离线构建通过别名使用 `createTraceWorker.offline.ts` 内嵌 Worker。
 - `src/features/project/`：`useProject.ts` 管理手稿状态、撤销重做与本地保存；`useProjectFiles.ts` 管理文件读取、导入和导出。
 - `src/core/`：`model.ts` 定义数据类型与工厂，`geometry.ts` 计算中心线与填充轮廓，`svg.ts` 输出 SVG 文档，`validation.ts` 校验手稿，`demo.ts` 提供初始示例，`brush.ts` 定义笔锋配置与端部轮廓。调用方直接导入对应模块。
 - `src/shared/`：通用控件、图标与文件工具。`components/controls.tsx` 复用按钮和分段选择的 Tailwind 状态类；`components/RangeInput.tsx` 统一滑块样式与原生事件透传，其 CSS 仅处理浏览器滑块伪元素。
