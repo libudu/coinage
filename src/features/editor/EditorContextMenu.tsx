@@ -5,11 +5,13 @@ import type { Glyph, Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
 import type { IconName } from "../../shared/components/Icon";
 import type { useProject } from "../project/useProject";
+import { selectionLocked } from "./nodeSelection";
 
 type Props = {
   doc: ReturnType<typeof useProject>;
   glyph: Glyph;
   nodeId: string | null;
+  nodeIds: string[];
   strokeId: string | null;
   select: (node: string | null, stroke?: string | null) => void;
   remove: () => void;
@@ -28,7 +30,7 @@ type MenuAction = {
 };
 
 export function EditorContextMenu({
-  doc, glyph, nodeId, strokeId, select, remove, duplicate, toast, position, onClose,
+  doc, glyph, nodeId, nodeIds, strokeId, select, remove, duplicate, toast, position, onClose,
 }: Props) {
   const menu = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(position);
@@ -62,14 +64,16 @@ export function EditorContextMenu({
     };
   }, [onClose]);
   const node = nodeId ? glyph.nodes[nodeId] : undefined;
+  const multiple = nodeIds.length > 1;
   const stroke = glyph.strokes.find((s) => s.id === strokeId);
   const nodeLocked = (id: string) =>
     glyph.strokes.some((s) => s.locked && s.nodes.includes(id));
-  const locked = !!stroke?.locked || !!(node && nodeLocked(node.id));
+  const locked = nodeIds.length ? selectionLocked(glyph, nodeIds) : !!stroke?.locked;
   const transform = (kind: "flip" | "rotate") => {
-    if (!stroke || stroke.locked || stroke.nodes.some(nodeLocked)) return;
+    const ids = multiple ? nodeIds : stroke?.nodes;
+    if (!ids?.length || selectionLocked(glyph, ids)) return;
     doc.update((g) => {
-      const nodes = [...new Set(stroke.nodes)].map((id) => g.nodes[id]),
+      const nodes = [...new Set(ids)].map((id) => g.nodes[id]),
         cx =
           (Math.min(...nodes.map((n) => n.x)) +
             Math.max(...nodes.map((n) => n.x))) /
@@ -148,17 +152,19 @@ export function EditorContextMenu({
     toast("已拆开当前笔画的连接");
   };
   const items: MenuAction[] = [];
-  if (stroke) {
-    const transformLocked = locked || stroke.nodes.some(nodeLocked);
+  if (stroke || multiple) {
+    const transformLocked = locked || (!multiple && !!stroke?.nodes.some(nodeLocked));
+    if (!multiple) items.push({ label: "复制笔画", icon: "copy", action: duplicate });
     items.push(
-      { label: "复制笔画", icon: "copy", action: duplicate },
       { label: "水平翻转", icon: "reflect", action: () => transform("flip"), disabled: transformLocked },
       { label: "旋转 90°", icon: "rotate", action: () => transform("rotate"), disabled: transformLocked },
     );
   }
   if (node) {
     items.push(
-      { label: "删除节点", icon: "trash", action: remove, disabled: locked, danger: true },
+      { label: multiple ? "删除所选节点" : "删除节点", icon: "trash", action: remove, disabled: locked, danger: true },
+    );
+    if (!multiple) items.push(
       { label: "合并邻近节点", icon: "branch", action: merge, disabled: locked },
       { label: "拆开连接", icon: "node", action: disconnect,
         disabled: locked || !stroke || glyph.strokes.filter((s) => s.nodes.includes(node.id)).length < 2 },

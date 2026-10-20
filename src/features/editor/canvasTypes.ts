@@ -6,8 +6,10 @@ export type EditorCanvasProps = {
   doc: ReturnType<typeof useProject>;
   glyph: Glyph;
   nodeId: string | null;
+  nodeIds: string[];
   strokeId: string | null;
   select: (node: string | null, stroke?: string | null) => void;
+  selectNodes: (nodes: string[], stroke?: string | null) => void;
   tool: Tool;
   setTool: (t: Tool) => void;
   upload: () => void;

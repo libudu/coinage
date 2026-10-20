@@ -10,10 +10,13 @@ import { clamp, controls, distance } from "../../core/geometry";
 import { newStroke, uid } from "../../core/model";
 import type { Point, Project, Stroke } from "../../core/model";
 import type { EditorCanvasProps } from "./canvasTypes";
+import { selectionLocked, translateNodes } from "./nodeSelection";
 
 type Drag = {
   kind: "node" | "branch" | "handle" | "stroke" | "pan";
   id?: string;
+  nodeIds?: string[];
+  deselectOnClick?: boolean;
   start: Point;
   origin?: Point;
   before: Project;
@@ -24,7 +27,7 @@ type Drag = {
 
 type Options = Pick<
   EditorCanvasProps,
-  "doc" | "glyph" | "strokeId" | "select" | "tool" | "toast"
+  "doc" | "glyph" | "nodeIds" | "strokeId" | "select" | "selectNodes" | "tool" | "toast"
 > & {
   space: boolean;
   preview: boolean;
@@ -37,8 +40,10 @@ type Options = Pick<
 export function useCanvasInteraction({
   doc,
   glyph,
+  nodeIds,
   strokeId,
   select,
+  selectNodes,
   tool,
   toast,
   space,
@@ -54,6 +59,10 @@ export function useCanvasInteraction({
   const stroke = glyph.strokes.find((s) => s.id === strokeId);
   const nodeLocked = (id: string) =>
     glyph.strokes.some((s) => s.locked && s.nodes.includes(id));
+  const strokeForNode = (id: string | undefined) => id
+    ? (stroke?.visible && stroke.nodes.includes(id) ? stroke
+      : glyph.strokes.find((s) => s.visible && s.nodes.includes(id)))?.id ?? null
+    : null;
 
   const finishPen = () => {
     penTail.current = null;
@@ -69,6 +78,8 @@ export function useCanvasInteraction({
     return { x: clamp(p.x, 0, 640), y: clamp(p.y, 0, 640) };
   };
   const start = (e: PE, kind: Drag["kind"], id?: string, sign?: number) => {
+    let movingIds: string[] | undefined;
+    let deselectOnClick = false;
     if (e.button !== 0 && e.button !== 1) return;
     e.preventDefault();
     e.stopPropagation();
@@ -89,12 +100,15 @@ export function useCanvasInteraction({
       return;
     }
     if (kind === "node" && id) {
-      select(
-        id,
-        (stroke?.visible && stroke.nodes.includes(id)
-          ? stroke
-          : glyph.strokes.find((s) => s.nodes.includes(id!) && s.visible))?.id,
-      );
+      const sid = strokeForNode(id);
+      if (tool === "select" && !e.altKey) {
+        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+          // Defer toggling off until release so Shift-drag can still constrain movement.
+          deselectOnClick = nodeIds.includes(id);
+          movingIds = deselectOnClick ? nodeIds : [...nodeIds, id];
+        } else movingIds = nodeIds.includes(id) ? nodeIds : [id];
+        selectNodes(movingIds, sid);
+      } else select(id, sid);
       if (tool === "pen") {
         const tail = penTail.current;
         if (tail && tail !== id && glyph.nodes[tail]) {
@@ -147,7 +161,12 @@ export function useCanvasInteraction({
       select(null, id);
       if (s.locked || s.nodes.some(nodeLocked)) return;
     }
-    drag.current = { kind, id, sign, start: p, origin, before, moved: false };
+    if (kind === "node" && id) movingIds ??= [id];
+    if (movingIds && selectionLocked(glyph, movingIds)) {
+      toast("请先解锁连接的笔画");
+      return;
+    }
+    drag.current = { kind, id, nodeIds: movingIds, deselectOnClick, sign, start: p, origin, before, moved: false };
     stage.current?.setPointerCapture(e.pointerId);
   };
   const move = (e: PE) => {
@@ -161,18 +180,25 @@ export function useCanvasInteraction({
       return;
     }
     let p = point(e);
-    if (e.shiftKey && d.origin && ["node", "branch"].includes(d.kind)) {
-      const dx = p.x - d.origin.x,
-        dy = p.y - d.origin.y,
+    const anchor = d.kind === "node" ? d.start : d.origin;
+    if (e.shiftKey && anchor && ["node", "branch"].includes(d.kind)) {
+      const dx = p.x - anchor.x,
+        dy = p.y - anchor.y,
         a = (Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI) / 4,
         len = Math.hypot(dx, dy);
       p = {
-        x: clamp(d.origin.x + Math.cos(a) * len, 0, 640),
-        y: clamp(d.origin.y + Math.sin(a) * len, 0, 640),
+        x: clamp(anchor.x + Math.cos(a) * len, 0, 640),
+        y: clamp(anchor.y + Math.sin(a) * len, 0, 640),
       };
     }
     if (distance(p, d.start) > 1) d.moved = true;
-    if (d.kind === "node" || d.kind === "branch")
+    if (!d.moved) return;
+    if (d.kind === "node")
+      doc.update((g) => {
+        const old = d.before.glyphs.find((g) => g.id === glyph.id)!;
+        translateNodes(g, d.nodeIds!, { x: p.x - d.start.x, y: p.y - d.start.y }, old);
+      }, false);
+    if (d.kind === "branch")
       doc.update((g) => {
         Object.assign(g.nodes[d.id!], p);
       }, false);
@@ -236,6 +262,10 @@ export function useCanvasInteraction({
         doc.replace(d.before, false);
         select(null, null);
       } else if (d.moved) doc.remember(d.before);
+      else if (d.kind === "node" && d.deselectOnClick) {
+        const ids = d.nodeIds!.filter((id) => id !== d.id);
+        selectNodes(ids, strokeForNode(ids.at(-1)));
+      }
     }
     drag.current = null;
     if (stage.current?.hasPointerCapture(e.pointerId))

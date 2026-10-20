@@ -28,6 +28,7 @@ src/
 │   │   ├── GlyphArtwork.tsx   # SVG 字形、节点与控制柄渲染
 │   │   ├── GlyphSidebar.tsx   # 字符集与笔画列表
 │   │   ├── useEditorCommands.ts # 删除、复制、撤销重做与编辑快捷键
+│   │   ├── nodeSelection.ts    # 节点集合、锁定保护、整体位移与批量删除
 │   │   ├── Properties.tsx      # 节点、笔画、笔锋和外观属性
 │   │   ├── EditorContextMenu.tsx # 字符、笔画与节点操作右键菜单
 │   │   ├── BrushControls.tsx   # 全局起收笔与快捷预设
@@ -55,6 +56,7 @@ src/
 └── static/                     # 原始素材：文字/、笔锋/
 public/reference.png            # 可直接访问的导入示例
 tests/core.test.ts              # 几何、描摹、导出与数据校验测试
+tests/nodeSelection.test.ts     # 多节点移动、边界、锁定与删除测试
 ```
 
 ## 开发约定

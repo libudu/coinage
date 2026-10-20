@@ -23,13 +23,15 @@ export default function App() {
     glyph =
       project.glyphs.find((g) => g.id === project.activeId) ||
       project.glyphs[0];
-  const [nodeId, setNodeId] = useState<string | null>(
-      glyph.strokes[0]?.nodes[1] || null,
+  const [selectedNodeIds, setNodeIds] = useState<string[]>(
+      glyph.strokes[0]?.nodes[1] ? [glyph.strokes[0].nodes[1]] : [],
     ),
     [strokeId, setStrokeId] = useState<string | null>(
       glyph.strokes[0]?.id || null,
     ),
     [tool, setTool] = useState<Tool>("select");
+  const nodeIds = selectedNodeIds.filter((id) => !!glyph.nodes[id]);
+  const nodeId = nodeIds.at(-1) ?? null;
   const [toast, setToast] = useState(""),
     [menu, setMenu] = useState<"export" | "project" | null>(null),
     [shortcuts, setShortcuts] = useState(false),
@@ -38,12 +40,18 @@ export default function App() {
     projectInput = useRef<HTMLInputElement>(null);
   const select = useCallback((n: string | null, s?: string | null) => {
     setContextMenu(null);
-    setNodeId(n);
+    setNodeIds(n ? [n] : []);
+    if (s !== undefined) setStrokeId(s);
+  }, []);
+  const selectNodes = useCallback((nodes: string[], s?: string | null) => {
+    setContextMenu(null);
+    setNodeIds([...new Set(nodes)]);
     if (s !== undefined) setStrokeId(s);
   }, []);
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
   const openContextMenu = (position: Point, n: string | null, s: string | null) => {
-    select(n, s);
+    if (n && nodeIds.includes(n)) selectNodes([...nodeIds.filter((id) => id !== n), n], s);
+    else select(n, s);
     setMenu(null);
     setContextMenu(position);
   };
@@ -59,9 +67,10 @@ export default function App() {
   const { remove, duplicate, undo, redo } = useEditorCommands({
     doc,
     glyph,
-    nodeId,
+    nodeIds,
     strokeId,
     select,
+    selectNodes,
     toast: setToast,
     importing: !!source,
     shortcuts,
@@ -298,8 +307,10 @@ export default function App() {
           doc={doc}
           glyph={glyph}
           nodeId={nodeId}
+          nodeIds={nodeIds}
           strokeId={strokeId}
           select={select}
+          selectNodes={selectNodes}
           tool={tool}
           setTool={setTool}
           upload={upload}
@@ -313,6 +324,7 @@ export default function App() {
           doc={doc}
           glyph={glyph}
           nodeId={nodeId}
+          nodeIds={nodeIds}
           strokeId={strokeId}
           showReference={showReference}
           setShowReference={setShowReference}
@@ -325,6 +337,7 @@ export default function App() {
             doc={doc}
             glyph={glyph}
             nodeId={nodeId}
+            nodeIds={nodeIds}
             strokeId={strokeId}
             select={select}
             remove={remove}
@@ -384,6 +397,8 @@ export default function App() {
                 ["添加路径节点", "双击笔画"],
                 ["字符列表 / 节点 / 笔画操作", "右键"],
                 ["移动节点", "方向键"],
+                ["全选节点", "Ctrl + A"],
+                ["多选 / 取消选中节点", "Shift / Ctrl + 点击"],
                 ["大步移动节点", "Shift + 方向键"],
                 ["临时平移画布", "空格 + 拖动"],
                 ["预览 / 编辑", "Tab"],

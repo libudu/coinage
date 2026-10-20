@@ -7,10 +7,12 @@ import { GlyphPreview } from "./GlyphPreview";
 import { BrushControls } from "./BrushControls";
 import { IconButton, NumberField, Section, segmentedStateClasses } from "../../shared/components/controls";
 import type { useProject } from "../project/useProject";
+import { selectionLocked, translateNodes } from "./nodeSelection";
 type Props = {
   doc: ReturnType<typeof useProject>;
   glyph: Glyph;
   nodeId: string | null;
+  nodeIds: string[];
   strokeId: string | null;
   showReference: boolean;
   setShowReference: (v: boolean) => void;
@@ -20,20 +22,35 @@ export function Properties({
   doc,
   glyph,
   nodeId,
+  nodeIds,
   strokeId,
   showReference,
   setShowReference,
   closeInspector,
 }: Props) {
   const node = nodeId ? glyph.nodes[nodeId] : undefined,
+    nodes = nodeIds.map((id) => glyph.nodes[id]).filter(Boolean),
+    multiple = nodes.length > 1,
     stroke = glyph.strokes.find((s) => s.id === strokeId),
     nodeLocked = (id: string) =>
       glyph.strokes.some((s) => s.locked && s.nodes.includes(id)),
-    locked = !!stroke?.locked || !!(node && nodeLocked(node.id));
+    locked = nodes.length ? selectionLocked(glyph, nodeIds) : !!stroke?.locked;
+  const position = {
+    x: nodes.reduce((sum, n) => sum + n.x, 0) / (nodes.length || 1),
+    y: nodes.reduce((sum, n) => sum + n.y, 0) / (nodes.length || 1),
+  };
   const widthGesture = useRef<Project | null>(null);
   const changeNode = (values: Partial<Knot>) => {
-    if (node && !locked)
-      doc.update((g) => Object.assign(g.nodes[node.id], values));
+    if (nodes.length && !locked)
+      doc.update((g) => {
+        if (values.x !== undefined || values.y !== undefined)
+          translateNodes(g, nodeIds, {
+            x: values.x === undefined ? 0 : values.x - position.x,
+            y: values.y === undefined ? 0 : values.y - position.y,
+          });
+        else nodes.forEach((n) => Object.assign(g.nodes[n.id], values,
+          values.mode === "symmetric" ? { handle: symmetricHandle(n) } : {}));
+      });
   };
   const changeStroke = (values: Partial<Stroke>) => {
     if (stroke && !stroke.locked)
@@ -44,19 +61,22 @@ export function Properties({
         ),
       );
   };
-  const symmetricHandle = () => {
-    if (!node || !stroke) return { x: 60, y: 0 };
-    const index = stroke.nodes.indexOf(node.id),
-      before = glyph.nodes[stroke.nodes[Math.max(0, index - 1)]],
+  const symmetricHandle = (n: Knot) => {
+    const path = stroke?.nodes.includes(n.id) ? stroke : glyph.strokes.find((s) => s.nodes.includes(n.id));
+    if (!path) return { x: 60, y: 0 };
+    const index = path.nodes.indexOf(n.id),
+      before = glyph.nodes[path.nodes[Math.max(0, index - 1)]],
       after =
-        glyph.nodes[stroke.nodes[Math.min(stroke.nodes.length - 1, index + 1)]],
+        glyph.nodes[path.nodes[Math.min(path.nodes.length - 1, index + 1)]],
       length = distance(before, after) || 1;
     return {
       x: ((after.x - before.x) / length) * 60,
       y: ((after.y - before.y) / length) * 60,
     };
   };
-  const avgWidth = stroke
+  const avgWidth = nodes.length
+    ? nodes.reduce((sum, n) => sum + n.width, 0) / nodes.length
+    : stroke
     ? stroke.nodes.reduce((sum, id) => sum + glyph.nodes[id].width, 0) /
       stroke.nodes.length
     : 40;
@@ -64,7 +84,7 @@ export function Properties({
   const changeWidth = (width: number, record = true) => {
     if (widthLocked) return;
     doc.update((g) => {
-      if (node) g.nodes[node.id].width = width;
+      if (nodes.length) nodeIds.forEach((id) => { g.nodes[id].width = width; });
       else if (stroke)
         [...new Set(stroke.nodes)].forEach((id) => {
           g.nodes[id].width = width;
@@ -92,7 +112,7 @@ export function Properties({
           trailing={
             <span className="selection-badge py-[3px] px-[7px] text-[9px] bg-[#eff2e8] text-[#839171] border [border-style:solid]
               border-[#e3e8da] rounded-[4px] [font-family:ui-monospace,_'Microsoft_YaHei',_monospace]">
-              {node
+              {multiple ? `${nodes.length} 节点` : node
                 ? `#${String(Object.keys(glyph.nodes).indexOf(node.id) + 1).padStart(2, "0")}`
                 : stroke
                   ? `${stroke.nodes.length} 节点`
@@ -105,13 +125,13 @@ export function Properties({
               <div className="field-grid grid grid-cols-[1fr_1fr] gap-[9px]">
                 <NumberField
                   label="X"
-                  value={node.x}
+                  value={position.x}
                   onChange={(x) => changeNode({ x })}
                   disabled={locked}
                 />
                 <NumberField
                   label="Y"
-                  value={node.y}
+                  value={position.y}
                   onChange={(y) => changeNode({ y })}
                   disabled={locked}
                 />
@@ -130,14 +150,11 @@ export function Properties({
                 ).map((item) => (
                   <button
                     key={item.mode}
-                    className={node.mode === item.mode ? "active" : ""}
+                    className={nodes.every((n) => n.mode === item.mode) ? "active" : ""}
                     onClick={() =>
                       changeNode({
                         mode: item.mode,
-                        handle:
-                          item.mode === "symmetric"
-                            ? symmetricHandle()
-                            : undefined,
+                        handle: undefined,
                         handleIn: undefined,
                       })
                     }
@@ -168,7 +185,7 @@ export function Properties({
             title="笔画粗细"
             trailing={
               <span className="subtle-label text-[9px] text-[#77856a]">
-                {node ? "当前节点" : "整条笔画"}
+                {multiple ? "所选节点" : node ? "当前节点" : "整条笔画"}
               </span>
             }
           >
@@ -176,7 +193,7 @@ export function Properties({
               laptop:gap-[12px] laptop:[&_.number-field]:w-[120px] tablet:[&_.number-field]:w-[111px]">
               <NumberField
                 label="宽度"
-                value={node?.width || avgWidth}
+                value={avgWidth}
                 min={1}
                 max={200}
                 suffix="px"
@@ -187,14 +204,14 @@ export function Properties({
                 className="width-demo w-[54px] bg-[#657e4d] rounded-[1px] block max-h-[30px] relative tablet:w-[38px]
                   after:content-[''] after:absolute after:top-[50%] after:left-[-5px] after:right-[-5px] after:border-t
                   after:[border-top-style:dashed] after:border-t-[#aec196]"
-                style={{ height: clamp((node?.width || avgWidth) / 4, 2, 35) }}
+                style={{ height: clamp(avgWidth / 4, 2, 35) }}
               />
             </div>
             <RangeInput
               aria-label="笔画粗细"
               min="1"
               max="200"
-              value={node?.width || avgWidth}
+              value={avgWidth}
               disabled={widthLocked}
               onPointerDown={(e) => {
                 widthGesture.current = doc.current.current;
@@ -223,7 +240,7 @@ export function Properties({
             </div>
           </Section>
         )}
-        {stroke && (
+        {(node || stroke) && (
           <Section title="转折">
             <label className="field-title block text-[#77856a] text-[10px] mb-[10px]">转折方式</label>
             <div className={`segmented shape-options flex border [border-style:solid] border-[#e2e8d9] rounded-[6px] p-[3px]
@@ -237,7 +254,9 @@ export function Properties({
                 <button
                   key={join}
                   className={
-                    (node?.join || stroke.join) === join ? "active" : ""
+                    (nodes.length
+                      ? nodes.every((n) => (n.join || glyph.strokes.find((s) => s.nodes.includes(n.id))?.join) === join)
+                      : stroke?.join === join) ? "active" : ""
                   }
                   disabled={locked}
                   onClick={() =>

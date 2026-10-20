@@ -6,7 +6,7 @@ import type { useCanvasInteraction } from "./useCanvasInteraction";
 
 type Props = Pick<
   EditorCanvasProps,
-  "glyph" | "nodeId" | "strokeId" | "tool" | "showReference"
+  "glyph" | "nodeId" | "nodeIds" | "strokeId" | "tool" | "showReference"
 > & {
   brush?: BrushDefaults;
   scale: number;
@@ -22,6 +22,7 @@ type Props = Pick<
 export function GlyphArtwork({
   glyph,
   nodeId,
+  nodeIds,
   strokeId,
   tool,
   showReference,
@@ -33,11 +34,16 @@ export function GlyphArtwork({
   interaction,
 }: Props) {
   const { start, canvasDown, insert, penTail, nodeLocked } = interaction;
-  const node = nodeId ? glyph.nodes[nodeId] : undefined;
+  const node = nodeIds.length === 1 && nodeId ? glyph.nodes[nodeId] : undefined;
+  const selectedIds = new Set(nodeIds);
   const stroke = glyph.strokes.find((s) => s.id === strokeId);
   const visibleIds = new Set(
     glyph.strokes.filter((s) => s.visible).flatMap((s) => s.nodes),
   );
+  const usedIds = new Set(glyph.strokes.flatMap((s) => s.nodes));
+  Object.keys(glyph.nodes).forEach((id) => {
+    if (!usedIds.has(id)) visibleIds.add(id);
+  });
   const outlines = glyph.strokes
     .filter((s) => s.visible)
     .map((s) => ({ stroke: s, path: outlinePath(glyph, s, brush) }));
@@ -154,12 +160,13 @@ export function GlyphArtwork({
           {[...visibleIds].map((id) => {
             const n = glyph.nodes[id];
             if (!n) return null;
-            const selected = id === nodeId,
+            const selected = selectedIds.has(id),
               size = (selected ? 9 : 7) / scale;
             return (
               <g
                 key={id}
                 data-node-id={id}
+                data-selected={selected}
                 className="node-target"
                 onPointerDown={(e) => start(e, "node", id)}
               >

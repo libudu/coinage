@@ -12,8 +12,10 @@ export function EditorCanvas({
   doc,
   glyph,
   nodeId,
+  nodeIds,
   strokeId,
   select,
+  selectNodes,
   tool,
   setTool,
   upload,
@@ -41,8 +43,10 @@ export function EditorCanvas({
   const interaction = useCanvasInteraction({
     doc,
     glyph,
+    nodeIds,
     strokeId,
     select,
+    selectNodes,
     tool,
     toast,
     space,
@@ -352,6 +356,7 @@ export function EditorCanvas({
             <GlyphArtwork
               glyph={glyph}
               nodeId={nodeId}
+              nodeIds={nodeIds}
               strokeId={strokeId}
               tool={tool}
               showReference={showReference}
@@ -423,7 +428,9 @@ export function EditorCanvas({
           {Object.keys(glyph.nodes).length} 节点
         </span>
         <span>
-          {node
+          {nodeIds.length > 1
+            ? `已选 ${nodeIds.length} 个节点`
+            : node
             ? `X ${Math.round(node.x)}　Y ${Math.round(node.y)}`
             : "640 × 640 px"}
           <span className="status-separator text-[#b6beac] py-0 px-[4px]">·</span>SVG
