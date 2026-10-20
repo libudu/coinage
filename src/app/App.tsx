@@ -78,6 +78,10 @@ function Workspace() {
     else select(n, s);
     setContextMenu(position);
   };
+  const openGlyphContextMenu = (id: string, position: Point) => {
+    switchGlyph(id);
+    openContextMenu(position, null, null);
+  };
   const { source, setSource, importFile, exportProject, saveSvg, savePng } =
     useProjectFiles({
       toast: setToast,
@@ -117,10 +121,13 @@ function Workspace() {
       <div className="flex min-w-0 flex-1 flex-col">
         <ProjectSaveError exportProject={exportProject} />
         <div hidden={page !== "library"} className="min-h-0 flex-1">
-          <GlyphLibrary onEdit={(id) => {
-            switchGlyph(id);
-            changePage("editor");
-          }} />
+          <GlyphLibrary
+            onEdit={(id) => {
+              switchGlyph(id);
+              changePage("editor");
+            }}
+            openGlyphContextMenu={openGlyphContextMenu}
+          />
         </div>
         <div
           hidden={page !== "editor"}
@@ -130,10 +137,7 @@ function Workspace() {
           phone:grid-cols-[76px_minmax(0,_1fr)]"
         >
           <GlyphSidebar
-            openGlyphContextMenu={(id, position) => {
-              switchGlyph(id);
-              openContextMenu(position, null, null);
-            }}
+            openGlyphContextMenu={openGlyphContextMenu}
             importGlyph={upload}
           />
           <EditorCanvas
@@ -144,21 +148,21 @@ function Workspace() {
             modalOpen={page !== "editor" || !!source || shortcuts || !!contextMenu || !!editingGlyphInfo}
           />
           <Properties onExportSvg={saveSvg} onExportPng={savePng} />
-          {contextMenu && (
-            <EditorContextMenu
-              position={contextMenu}
-              onClose={closeContextMenu}
-              remove={remove}
-              duplicate={duplicate}
-              editGlyphInfo={() => {
-                const glyph = activeGlyph(api.getState());
-                setEditingGlyphInfo({ id: glyph.id, name: glyph.name, description: glyph.description });
-              }}
-              toast={setToast}
-            />
-          )}
         </div>
       </div>
+      {contextMenu && (
+        <EditorContextMenu
+          position={contextMenu}
+          onClose={closeContextMenu}
+          remove={remove}
+          duplicate={duplicate}
+          editGlyphInfo={() => {
+            const glyph = activeGlyph(api.getState());
+            setEditingGlyphInfo({ id: glyph.id, name: glyph.name, description: glyph.description });
+          }}
+          toast={setToast}
+        />
+      )}
       {editingGlyphInfo && (
         <GlyphBasicInfoDialog
           name={editingGlyphInfo.name}

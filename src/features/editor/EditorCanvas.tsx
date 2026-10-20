@@ -416,7 +416,7 @@ const HistoryActions = memo(function HistoryActions() {
               {saved === "saved"
                 ? "已保存到本机"
                 : saved === "saving"
-                  ? "保存中"
+                  ? "稍后自动保存"
                   : saveError || "本地保存失败，请导出手稿"}
             </span>
           </div>

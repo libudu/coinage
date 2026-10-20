@@ -63,12 +63,15 @@ async function inputValue(input: HTMLInputElement, value: string) {
 }
 function library(container: Element) { return container.querySelector<HTMLElement>('main[aria-label="字库"]')!; }
 function editor(container: Element) { return container.querySelector<HTMLElement>(".workspace")!; }
-async function editInfo(container: Element) {
+async function contextMenu(target: Element) {
+  const event = new dom.window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 120 });
   await act(async () => {
-    editor(container).querySelector(".glyph-card.selected")!.dispatchEvent(
-      new dom.window.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 120 }),
-    );
+    target.dispatchEvent(event);
   });
+  assert.equal(event.defaultPrevented, true);
+}
+async function editInfo(container: Element) {
+  await contextMenu(editor(container).querySelector(".glyph-card.selected")!);
   await click(button(container, "编辑基本信息"));
   const dialog = container.querySelector("dialog")!;
   const inputs = dialog.querySelectorAll("input");
@@ -223,4 +226,78 @@ test("both basic information fields can be empty, with no history for cancellati
   await key("s", true);
   assert.equal(saved.at(-1)?.glyphs[1].name, "");
   assert.equal(saved.at(-1)?.glyphs[1].description, "");
+});
+
+test("library context menus edit the right-clicked glyph without entering the editor", async (t) => {
+  const { container, saved, project } = await render(t);
+  await inputValue(library(container).querySelector("input")!, "乙戊");
+  await contextMenu(button(container, "编辑 乙"));
+  const menu = container.querySelector<HTMLElement>('[role="menu"][aria-label="字符操作"]')!;
+  assert.ok(menu);
+  assert.equal(menu.closest("[hidden]"), null);
+  assert.deepEqual(Array.from(menu.querySelectorAll("button"), (item) => item.textContent?.trim()),
+    ["编辑基本信息", "复制字符", "删除字符"]);
+  assert.equal(editor(container).hidden, true);
+  // 右键字符必须清理造字页遗留的节点选择，始终显示整字操作。
+  assert.equal(editor(container).querySelector(".glyph-card.selected strong")?.textContent, "乙");
+  await act(async () => { menu.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  assert.equal(container.querySelector('.editor-context-menu'), null);
+  await contextMenu(button(container, "编辑 乙"));
+  await click(button(container, "编辑基本信息"));
+  const dialog = container.querySelector("dialog")!;
+  const [name, description] = dialog.querySelectorAll("input");
+  assert.equal(name.value, "乙");
+  await inputValue(name, "戊");
+  await inputValue(description, "字库说明");
+  await confirm(dialog);
+  assert.equal(editor(container).hidden, true);
+  assert.equal(button(container, "字库").getAttribute("aria-current"), "page");
+  assert.ok(button(container, "编辑 戊").textContent?.includes("字库说明"));
+  const cells = library(container).querySelectorAll('[role="img"]');
+  assert.equal(cells[0].querySelector("path"), null);
+  assert.ok(cells[1].querySelector("path"));
+  await key("s", true);
+  assert.equal(saved.at(-1)?.glyphs[1].name, "戊");
+  assert.equal(saved.at(-1)?.glyphs[1].description, "字库说明");
+  assert.deepEqual(saved.at(-1)?.glyphs[0], project.glyphs[0]);
+  await contextMenu(button(container, "编辑 戊"));
+  await click(button(container, "造字"));
+  assert.equal(container.querySelector('.editor-context-menu'), null);
+});
+
+test("library context menus reuse character copy and delete operations with shared undo history", async (t) => {
+  const { container, saved, project } = await render(t);
+  const cards = () => library(container).querySelectorAll('section[aria-label="全部字符"] button');
+  await contextMenu(button(container, "编辑 𠮷"));
+  await click(button(container, "编辑基本信息"));
+  const dialog = container.querySelector("dialog")!;
+  await inputValue(dialog.querySelectorAll("input")[1], "保留说明");
+  await confirm(dialog);
+  await contextMenu(button(container, "编辑 𠮷"));
+  await click(button(container, "复制字符"));
+  assert.equal(container.querySelector('.editor-context-menu'), null);
+  assert.equal(editor(container).hidden, true);
+  assert.equal(cards().length, 6);
+  assert.ok(button(container, "编辑 𠮷 副本").textContent?.includes("保留说明"));
+  await key("s", true);
+  const source = saved.at(-1)!.glyphs[2], copy = saved.at(-1)!.glyphs[5];
+  assert.notEqual(copy.id, source.id);
+  assert.deepEqual(copy.nodes, source.nodes);
+  assert.deepEqual(copy.strokes, source.strokes);
+  assert.equal(copy.description, source.description);
+  await contextMenu(button(container, "编辑 乙"));
+  await click(button(container, "删除字符"));
+  assert.equal(editor(container).hidden, true);
+  assert.equal(cards().length, 5);
+  assert.ok(button(container, "编辑 𠮷 副本"));
+  await key("s", true);
+  assert.equal(saved.at(-1)!.glyphs.some((glyph) => glyph.id === project.glyphs[1].id), false);
+  assert.ok(saved.at(-1)!.glyphs.some((glyph) => glyph.id === copy.id));
+  await click(button(container, "造字"));
+  await key("z", true);
+  assert.equal(cards().length, 6);
+  assert.ok(button(container, "编辑 乙"));
+  await key("z", true);
+  assert.equal(cards().length, 5);
+  assert.equal(Array.from(cards()).some((card) => card.getAttribute("aria-label") === "编辑 𠮷 副本"), false);
 });

@@ -1,9 +1,14 @@
 import { useMemo, useState } from "react";
-import type { Glyph } from "../../core/model";
+import type { Glyph, Point } from "../../core/model";
 import { GlyphPreview } from "../editor/GlyphPreview";
 import { useProject } from "../project/useProject";
 
-export function GlyphLibrary({ onEdit }: { onEdit: (id: string) => void }) {
+type Props = {
+  onEdit: (id: string) => void;
+  openGlyphContextMenu: (id: string, position: Point) => void;
+};
+
+export function GlyphLibrary({ onEdit, openGlyphContextMenu }: Props) {
   const glyphs = useProject((s) => s.project.glyphs);
   const brush = useProject((s) => s.project.brush);
   const [sentence, setSentence] = useState("");
@@ -61,6 +66,10 @@ export function GlyphLibrary({ onEdit }: { onEdit: (id: string) => void }) {
               type="button"
               aria-label={`编辑 ${glyph.name || `字符 ${String(index + 1).padStart(2, "0")}`}`}
               onClick={() => onEdit(glyph.id)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                openGlyphContextMenu(glyph.id, { x: event.clientX, y: event.clientY });
+              }}
               className="flex min-w-0 flex-col items-center gap-[12px] rounded-[9px] border border-solid border-[#e4e8dc] bg-[#fcfdf9] px-[12px] pb-[14px] pt-[16px] hover:border-[#cddbb9] hover:bg-[#edf2e3]"
             >
               <span className="block aspect-square w-full max-w-[120px] [&_svg]:h-full [&_svg]:w-full">
