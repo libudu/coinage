@@ -1,6 +1,6 @@
 # Coinage
 
-一个纯前端造字工作台。导入图片，提取笔画中心线，编辑共享节点与局部宽度，导出真正的 SVG 路径。采用 React、TypeScript 和 Vite，无需后端或外部 API。
+一个本地造字工作台。导入图片，提取笔画中心线，编辑共享节点与局部宽度，导出真正的 SVG 路径。采用 React、TypeScript 和 Vite；轻量 Node 服务将手稿保存到本机文件，无需数据库或外部 API。
 
 ## 启动
 
@@ -11,15 +11,42 @@ npm install
 npm run dev
 ```
 
-打开终端中显示的本地地址，默认是 http://localhost:5173。首次打开包含三个可编辑示例字符。
+打开终端中显示的本地地址，默认是 http://127.0.0.1:5173。开发服务已集成本地存储接口，无需另开后端进程；开发手稿保存在项目根目录 `data/project.json`。首次打开包含三个可编辑示例字符。
+
+## Windows 便携包
+
+```bash
+npm run build
+```
+
+构建会生成以下目录，并在项目根目录自动生成 `Coinage v<版本号>.zip`（版本号来自 `package.json`）。直接分发这个 ZIP，使用者解压后无需安装 Node 或 npm 依赖：
+
+```text
+dist/
+├── 双击运行.bat
+├── 使用说明.txt
+├── runtime/           # node.exe 和 Node 许可证
+├── server/            # Node 内置模块实现的本地服务
+├── client/            # 网页、样式和 Worker
+└── data/              # 运行后生成 project.json 和 project.backup.json
+```
+
+双击 `双击运行.bat` 后启动本地服务器并自动打开默认浏览器，地址为 `http://127.0.0.1:47831`。请保持命令窗口开启；关闭窗口会停止服务。重复双击同一份程序会打开已有服务的页面。默认端口被其他程序占用时会显示错误，可通过环境变量 `COINAGE_PORT` 改用其他端口。
+
+打包默认复制当前构建环境的 Windows `node.exe` 及同目录 `LICENSE`，不下载运行时，也不复制 npm。可设置 `COINAGE_NODE_PATH` 指向另一份 Windows Node；支持 Node 20.19+（20.x）或 22.12+。生成的包与所带 Node 的系统架构一致，请放在有写入权限的目录。重新构建前请关闭正在运行的本地版，以免 Windows 锁定包内 `node.exe`。
+
+备份或搬迁时复制 `data/` 即可。升级时先关闭服务，替换 `client/`、`server/`、`runtime/` 和启动文件，保留 `data/`。重新构建不会清理 `dist/data/`，也不会把开发手稿复制进发布包；发布自己的使用目录前需确认没有把个人手稿一并分发。
+
+ZIP 只收录 `client/`、`server/`、`runtime/node.exe`、`runtime/LICENSE`、启动 bat 和使用说明，附带空的 `data/`。不会收录 `dist/data/` 中已有的手稿、备份或旧构建残留；本机 `dist/data/` 保持原样。同版本再次构建会替换已有 ZIP，打包失败时保留上一份完整压缩包。ZIP 工具 JSZip 仅作为开发依赖使用，不进入运行时。
 
 ## 常用命令
 
-- `npm run dev`：启动开发服务，支持热更新。
-- `npm run build`：检查 TypeScript 类型并打包到 `dist/`。
-- `npm run build:offline`：生成 `dist/offline/Coinage.html`，双击即可离线使用，无需服务器。脚本、样式与描摹 Worker 均内嵌，只需分发这一个 HTML 文件。
-- `npm run preview`：本地预览打包结果，需先运行构建。
+- `npm run dev`：启动开发服务，支持热更新和本地文件保存。
+- `npm run build`：检查 TypeScript 类型，生成附带 Windows Node 和启动 bat 的便携目录及 `Coinage v<版本号>.zip`。
+- `npm start`：启动已构建的本地服务并打开浏览器。
+- `npm run preview`：启动已构建的本地服务，不自动打开浏览器；需先运行 `npm run build`。
 - `npm test`：运行骨架提取、共享节点、闭环、宽度、曲线、SVG 导出与数据校验测试。
+- `npm run test:package`：构建后解压实际分发 ZIP，验证包内 Node 独立启动、中文空格目录、重启恢复、重复启动与端口占用。
 
 ## 使用
 
@@ -58,9 +85,11 @@ npm run dev
 
 ## 数据与转换
 
-数据自动保存在当前浏览器的 localStorage；刷新后恢复。清理浏览器数据会清除本地手稿，存储不足时界面会提示导出。可用 JSON 手稿备份、转移，并通过手稿菜单重新打开。撤销记录保留最近 60 步，仅在当前会话有效。
+本地版手稿在编辑后自动保存到程序目录的 `data/project.json`，刷新或重启后恢复，清理浏览器数据不会删除手稿。写入使用临时文件替换，并把上一版保存为 `project.backup.json`；恢复备份前先关闭服务，将备份复制为 `project.json`。存储失败会在画布底部提示并自动重试；多页面修改产生冲突时，请先导出当前手稿，再刷新。存在未保存修改时，关闭或刷新页面会触发浏览器提醒。单份手稿上限 64 MB，原图叠加也保存在手稿中。
 
-离线 HTML 建议使用 Chrome 或 Edge 打开。离线文件与开发地址的浏览器存储相互独立，移动或重命名 HTML 文件也可能影响本地手稿的读取；迁移前请导出 JSON 手稿，再在新位置导入。运行普通 `npm run build` 会清理 `dist/`，需要离线文件时请随后重新运行 `npm run build:offline`。
+本地文件不存在时，优先读取当前浏览器、当前地址下的 `coinage.studio.v1` 旧手稿并在首次自动保存时迁入文件。浏览器存储按地址隔离，旧版地址和新版地址的数据不能互相直接读取：请在旧版导出 JSON，再在新版手稿菜单中打开。已有本地文件始终优先，不会被浏览器旧数据覆盖。
+
+手稿统一通过本地服务保存，支持 JSON 备份与转移。导入参数仍在当前浏览器中记忆。撤销记录保留最近 60 步，仅在当前会话有效。
 
 图片处理完全在本机进行：最长边缩放至 360 像素进行前景识别，去除小连通区域，通过 Zhang–Suen 细化提取中心线，以距离场估计宽度，再将图结构简化为可编辑路径。转换在 Web Worker 中执行。导出根据这些路径、控制柄和宽度重建闭合轮廓，不嵌入原始位图。
 
@@ -70,13 +99,17 @@ npm run dev
 
 - `src/app/`：`App.tsx` 组装工作台并管理菜单、字符切换与弹窗状态；`App.css` 仅提供提示动画关键帧。
 - `src/features/editor/`：`EditorCanvas.tsx` 管理视口与工具栏，`useCanvasInteraction.ts` 管理钢笔和拖拽历史，`GlyphArtwork.tsx` 渲染字形与节点；`GlyphSidebar.tsx` 管理字符/笔画列表，`useEditorCommands.ts` 管理编辑命令与快捷键，另含属性面板、右键菜单与字形预览。
-- `src/features/tracing/`：图片导入、前景分离、骨架提取与转换 Worker，`traceSettings.ts` 记忆导入参数；`createTraceWorker.ts` 用于标准网页构建，离线构建通过别名使用 `createTraceWorker.offline.ts` 内嵌 Worker。
-- `src/features/project/`：`useProject.ts` 管理手稿状态、撤销重做与本地保存；`useProjectFiles.ts` 管理文件读取、导入和导出。
+- `src/features/tracing/`：图片导入、前景分离、骨架提取与转换 Worker，`traceSettings.ts` 记忆导入参数；`createTraceWorker.ts` 创建通过 Vite 打包的描摹 Worker。
+- `src/features/project/`：`useProject.ts` 管理手稿状态、撤销重做和自动保存；`projectStorage.ts` 管理本地服务存储、旧手稿迁移、保存队列与版本冲突；`useProjectFiles.ts` 管理文件读取、导入和导出。启动时完成读取再挂载编辑器，避免覆盖已有文件。
+- `src/server/`：`app.ts` 提供手稿读写、原子替换、备份、版本冲突检查和静态文件托管；`index.ts` 仅监听本机、检查重复启动并打开浏览器。只使用 Node 内置模块，复用核心手稿校验。`vite.server.config.ts` 将服务端打包成独立 ESM 文件。
+- `scripts/package.mjs` 与 `dist-template/`：复制便携 Node、许可证和启动 bat，保留用户数据目录；`scripts/createPackageZip.mjs` 按运行文件清单生成不含用户手稿的版本 ZIP。
 - `src/core/`：`model.ts` 定义数据类型与工厂，`geometry.ts` 计算中心线与填充轮廓，`svg.ts` 输出 SVG 文档，`validation.ts` 校验手稿，`demo.ts` 提供初始示例，`brush.ts` 定义笔锋配置与端部轮廓。调用方直接导入对应模块。
 - `src/shared/`：通用控件、图标与文件工具。`components/controls.tsx` 复用按钮和分段选择的 Tailwind 状态类；`components/RangeInput.tsx` 统一滑块样式与原生事件透传，其 CSS 仅处理浏览器滑块伪元素。
 - 样式优先使用组件内的 Tailwind CSS 类。`src/styles/` 仅保留 `index.css` 中的 Tailwind 入口与断点变体，以及 `base.css` 中的全局规则；确需自定义 CSS 的画布纹理、组合光标就近放在 `src/features/editor/EditorCanvas.css`，由所属组件导入。
 - `src/static/`：文字与笔锋原始素材。
 - `tests/core.test.ts`：算法与数据完整性回归测试。
 - `tests/nodeSelection.test.ts`：多节点整体移动、画布边界、锁定保护与批量删除回归测试。
+- `tests/server.test.ts` 与 `tests/projectStorage.test.ts`：本地保存、备份、旧手稿兼容、错误、并发与访问限制回归测试；`tests/package.smoke.ts` 验证实际发布包。
+- `tests/packageZip.test.ts`：分发 ZIP 内容、中文文件名、用户数据排除与同版本替换测试。
 
 完整目录说明和开发约定见 [AGENTS.md](AGENTS.md)。

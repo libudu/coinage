@@ -2,7 +2,7 @@
 
 ## 项目
 
-Coinage 是纯前端造字工具，使用 React、TypeScript、Vite 和 Tailwind CSS。图片在本机处理，手稿保存在浏览器 localStorage；界面保持简洁中文，不添加无关说明文案。
+Coinage 是本地造字工具，使用 React、TypeScript、Vite 和 Tailwind CSS。图片在浏览器中处理，轻量 Node 本地服务把手稿保存为 JSON 文件。界面保持简洁中文，不添加无关说明文案。
 
 ## 目录
 
@@ -40,12 +40,15 @@ src/
 │   │   ├── ImportDialog.tsx    # 图片导入与识别参数预览
 │   │   ├── trace.ts            # 前景分离、骨架提取、路径简化与图片读取
 │   │   ├── traceSettings.ts    # 导入参数的本地记忆与兼容读取
-│   │   ├── createTraceWorker.ts # 标准网页 Worker 工厂
-│   │   ├── createTraceWorker.offline.ts # 离线包内嵌 Worker 工厂
+│   │   ├── createTraceWorker.ts # 描摹 Worker 工厂
 │   │   └── trace.worker.ts     # 后台转换入口
 │   └── project/
 │       ├── useProject.ts      # 手稿状态、撤销重做和本地保存
+│       ├── projectStorage.ts  # 本地服务存储、旧手稿迁移与保存队列
 │       └── useProjectFiles.ts # 图片读取、JSON 导入及 JSON/SVG/PNG 导出
+├── server/
+│   ├── app.ts                 # 本机 API、手稿校验、版本冲突与原子文件写入
+│   └── index.ts               # 静态托管、端口与重复启动检查、打开浏览器
 ├── shared/
 │   ├── components/
 │   │   ├── Icon.tsx           # 图标
@@ -60,6 +63,14 @@ src/
 public/reference.png            # 可直接访问的导入示例
 tests/core.test.ts              # 几何、描摹、导出与数据校验测试
 tests/nodeSelection.test.ts     # 多节点移动、边界、锁定与删除测试
+tests/server.test.ts            # 本地读写、备份、版本冲突与访问限制测试
+tests/projectStorage.test.ts    # 旧手稿迁移、保存队列与错误测试
+tests/package.smoke.ts          # 解压分发 ZIP 后验证便携 Node、重启与端口
+tests/packageZip.test.ts        # 分发清单、中文文件名、排除手稿与 ZIP 替换测试
+scripts/package.mjs             # 复制 Windows Node 与许可证，生成便携目录和版本 ZIP
+scripts/createPackageZip.mjs    # 只打包运行所需文件，保留空 data 目录
+dist-template/双击运行.bat       # 使用包内 Node 启动
+vite.server.config.ts           # 无第三方运行依赖的服务端打包
 ```
 
 ## 开发约定
@@ -74,7 +85,10 @@ tests/nodeSelection.test.ts     # 多节点移动、边界、锁定与删除测�
 - 节点按 ID 存储，多条笔画可引用同一节点。修改几何或连接关系时保持引用有效，尊重笔画锁定状态。
 - 通过 `useProject` 的更新接口修改手稿；连续拖拽作为一次撤销操作，不逐帧写入历史。
 - 手稿级笔锋存于 `Project.brush`，所有笔画统一使用全局配置，锁定仅保护几何和连接关系；全局修改通过 `changeGlobalBrush`，加载与导入通过 `migrateProjectBrush` 清理旧的局部笔锋字段。画布、缩略图和导出均传入全局配置。
-- 保持 `coinage.studio.v1` 本地存储和 `Project.version` 的兼容性；修改数据格式时同步更新校验并处理旧手稿迁移。
+- 保持 `Project.version` 的兼容性，并保留 `coinage.studio.v1` 旧浏览器手稿的迁移读取；新手稿只通过本地服务保存。修改数据格式时同步更新校验并处理旧手稿迁移。
+- 本地版通过 `/api/project` 读写 `data/project.json`，先完成读取再挂载编辑器；读取失败不能回退示例并覆盖文件。文件不存在时才读取当前来源的旧浏览器手稿。本地保存使用版本比较、串行写入和临时文件替换，上一版保留为 `project.backup.json`；失败须显示并允许导出当前手稿。
+- 服务仅监听 `127.0.0.1`，不引入数据库或额外服务端运行依赖。开发数据在项目根目录 `data/`，发布数据在 `dist/data/`，均不入库；构建不得清理用户数据。发布数据目录按服务文件位置定位，不能依赖启动时工作目录。
 - 描摹计算放在 Worker 中；保留 `new Worker(new URL("./trace.worker.ts", import.meta.url), { type: "module" })` 的 Vite 打包方式。SVG 导出使用真实路径。
-- 离线构建使用 `npm run build:offline`，输出 `dist/offline/Coinage.html`；仅此构建将 Worker 工厂替换为 `?worker&inline` 版本。运行时资源须使用可打包的导入，不能写死根路径或依赖网络；保留标准网页构建。
-- 保留已有素材及其文件名；未经需求授权，不引入后端或上传用户图片。
+- `npm run build` 生成 `dist/client`、`dist/server`、`dist/runtime` 和 `双击运行.bat`，并在项目根目录生成 `Coinage v<版本号>.zip`，运行时只需包内 Node。ZIP 按运行文件清单打包，仅附带空 `data/`，不得收录已有手稿、备份或旧构建残留；本机数据不清理。JSZip 只作为开发依赖，失败时保留上一份完整 ZIP。内置 Node 默认复制构建机器的 `process.execPath` 和同目录 `LICENSE`，可用 `COINAGE_NODE_PATH` 指定 Windows Node。
+- 运行时资源须使用可打包的导入，不能依赖外部网络。`dist/client` 是本地服务托管的必要网页产物。
+- 保留已有素材及其文件名；图片处理继续在浏览器中完成，不上传到外部服务。

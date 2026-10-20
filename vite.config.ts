@@ -1,23 +1,20 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { viteSingleFile } from 'vite-plugin-singlefile'
 import { fileURLToPath } from 'node:url'
+import { createApp } from './src/server/app'
 
-export default defineConfig(({ mode }) => {
-  const offline = mode === 'offline'
-  return {
-    plugins: [react(), tailwindcss(), ...(offline ? [viteSingleFile({ outputFileName: 'Coinage.html' })] : [])],
-    resolve: offline ? {
-      alias: [{
-        find: './createTraceWorker',
-        replacement: fileURLToPath(new URL('./src/features/tracing/createTraceWorker.offline.ts', import.meta.url)),
-      }],
-    } : undefined,
-    build: offline ? {
-      outDir: 'dist/offline',
-      copyPublicDir: false,
-      modulePreload: false,
-    } : undefined,
-  }
+export default defineConfig({
+  plugins: [react(), tailwindcss(), {
+    name: 'coinage-local-storage',
+    configureServer(server: import('vite').ViteDevServer) {
+      const handle = createApp({ dataDir: fileURLToPath(new URL('./data', import.meta.url)) })
+      server.middlewares.use((req, res, next) => {
+        if (req.url?.startsWith('/api/')) void handle(req, res)
+        else next()
+      })
+    },
+  }],
+  server: { host: '127.0.0.1' },
+  build: { outDir: 'dist/client', target: 'es2022' },
 })

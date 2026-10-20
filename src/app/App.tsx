@@ -1,7 +1,7 @@
 import "./App.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { emptyGlyph } from "../core/model";
-import type { Point } from "../core/model";
+import type { Point, Project } from "../core/model";
 import { Icon } from "../shared/components/Icon";
 import { IconButton, buttonStateClasses } from "../shared/components/controls";
 import { ImportDialog } from "../features/tracing/ImportDialog";
@@ -15,10 +15,10 @@ import { useEditorCommands } from "../features/editor/useEditorCommands";
 import { GlyphSidebar } from "../features/editor/GlyphSidebar";
 import { RenameGlyphDialog } from "../features/editor/RenameGlyphDialog";
 
-export default function App() {
+export default function App({ initialProject }: { initialProject: Project }) {
   const [contextMenu, setContextMenu] = useState<Point | null>(null);
   const [renamingGlyph, setRenamingGlyph] = useState<{ id: string; name: string } | null>(null);
-  const doc = useProject(),
+  const doc = useProject(initialProject),
     { project, update } = doc,
     glyph =
       project.glyphs.find((g) => g.id === project.activeId) ||

@@ -1,5 +1,7 @@
 node_modules/
 dist/
+/Coinage*.zip
+data/
 *.local
 *.log
 .env

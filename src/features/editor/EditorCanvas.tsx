@@ -187,7 +187,7 @@ export function EditorCanvas({
                 ? "已保存到本机"
                 : doc.saved === "saving"
                   ? "保存中"
-                  : "存储空间不足，请导出手稿"}
+                  : doc.saveError || "本地保存失败，请导出手稿"}
             </span>
           </div>
         </div>

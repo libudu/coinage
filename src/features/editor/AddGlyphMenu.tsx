@@ -35,7 +35,8 @@ export function AddGlyphMenu({ addGlyph, importGlyph }: Props) {
       }}
       onPointerLeave={() => setOpen(false)}
       onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+          setOpen(false);
       }}
       onKeyDown={(e) => {
         e.stopPropagation();
@@ -46,11 +47,25 @@ export function AddGlyphMenu({ addGlyph, importGlyph }: Props) {
         } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
           e.preventDefault();
           setOpen(true);
-          const items = [...e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
-          const index = items.indexOf(document.activeElement as HTMLButtonElement);
-          const next = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1
-            : index < 0 ? (e.key === "ArrowUp" ? items.length - 1 : 0)
-            : (index + (e.key === "ArrowUp" ? -1 : 1) + items.length) % items.length;
+          const items = [
+            ...e.currentTarget.querySelectorAll<HTMLButtonElement>(
+              '[role="menuitem"]',
+            ),
+          ];
+          const index = items.indexOf(
+            document.activeElement as HTMLButtonElement,
+          );
+          const next =
+            e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? items.length - 1
+                : index < 0
+                  ? e.key === "ArrowUp"
+                    ? items.length - 1
+                    : 0
+                  : (index + (e.key === "ArrowUp" ? -1 : 1) + items.length) %
+                    items.length;
           requestAnimationFrame(() => items[next]?.focus());
         }
       }}

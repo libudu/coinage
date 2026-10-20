@@ -1,20 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { demoProject } from "../../core/demo";
-import { isProject } from "../../core/validation";
-import { migrateProjectBrush } from "../../core/brush";
+import { projectStorage } from "./projectStorage";
 import type { Glyph, Project } from "../../core/model";
-const KEY = "coinage.studio.v1";
-function initial() {
-  try {
-    const p: unknown = JSON.parse(localStorage.getItem(KEY) || "null");
-    if (isProject(p)) return migrateProjectBrush(p);
-  } catch {}
-  return demoProject();
-}
-export function useProject() {
-  const [project, setProject] = useState<Project>(initial),
+export function useProject(initialProject: Project) {
+  const [project, setProject] = useState<Project>(initialProject),
     current = useRef(project),
-    [saved, setSaved] = useState("saved");
+    [saved, setSaved] = useState("saving"),
+    [saveError, setSaveError] = useState("");
+  const persisted = useRef<Project | null>(null);
+  const pendingSaves = useRef(0);
   const history = useRef<{ past: Project[]; future: Project[] }>({
       past: [],
       future: [],
@@ -57,19 +50,41 @@ export function useProject() {
   }, [replace]);
   useEffect(() => {
     setSaved("saving");
-    const save = () => {
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let running = false;
+    const save = async () => {
+      if (running) return;
+      running = true;
+      pendingSaves.current++;
       try {
-        localStorage.setItem(KEY, JSON.stringify(current.current));
-        setSaved("saved");
-      } catch {
-        setSaved("error");
-      }
+        await projectStorage.save(project);
+        persisted.current = project;
+        if (!disposed) { setSaved("saved"); setSaveError(""); }
+      } catch (error) {
+        if (!disposed) {
+          setSaved("error");
+          setSaveError(error instanceof Error ? error.message : "本地保存失败，请导出手稿");
+          timer = setTimeout(() => void save(), 5000);
+        }
+      } finally { running = false; pendingSaves.current--; }
     };
-    const timer = setTimeout(save, 250);
-    window.addEventListener("beforeunload", save);
+    const flush = () => {
+      if (document.visibilityState === "hidden") { clearTimeout(timer); void save(); }
+    };
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (persisted.current === current.current && pendingSaves.current === 0) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    timer = setTimeout(() => void save(), 250);
+    document.addEventListener("visibilitychange", flush);
+    window.addEventListener("beforeunload", beforeUnload);
     return () => {
+      disposed = true;
       clearTimeout(timer);
-      window.removeEventListener("beforeunload", save);
+      document.removeEventListener("visibilitychange", flush);
+      window.removeEventListener("beforeunload", beforeUnload);
     };
   }, [project]);
   return {
@@ -81,6 +96,7 @@ export function useProject() {
     undo,
     redo,
     saved,
+    saveError,
     canUndo: !!history.current.past.length,
     canRedo: !!history.current.future.length,
   };
