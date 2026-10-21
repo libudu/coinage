@@ -1,7 +1,7 @@
 import { Button } from "../shared/components/Button";
 import { Icon } from "../shared/components/Icon";
 
-export type WorkspacePage = "library" | "editor";
+export type WorkspacePage = "library" | "editor" | "styles";
 
 export function AppNavigation({
   page,
@@ -36,23 +36,20 @@ export function AppNavigation({
           [
             { id: "library", label: "字库", icon: "grid" },
             { id: "editor", label: "造字", icon: "pen" },
-            { id: "effects", label: "特效", icon: "settings" },
+            { id: "styles", label: "样式", icon: "settings" },
           ] as const
         ).map((item) => (
           <Button
             variant="bare"
             key={item.id}
             type="button"
-            disabled={item.id === "effects"}
             aria-current={page === item.id ? "page" : undefined}
             className={`flex h-[64px] w-full flex-col items-center justify-center gap-[7px] rounded-[9px] text-[12px] ${
               page === item.id
                 ? "bg-[#eaf0e1] font-semibold text-[#2d4e3b]"
                 : "text-[#7e897c] enabled:hover:bg-[#f0f3ea]"
             }`}
-            onClick={() => {
-              if (item.id !== "effects") onChange(item.id);
-            }}
+            onClick={() => onChange(item.id)}
           >
             <Icon name={item.icon} size={21} />
             {item.label}

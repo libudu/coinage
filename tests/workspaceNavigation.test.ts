@@ -9,6 +9,7 @@ import type { Project } from "../src/core/model";
 import { glyphPath, outlinePath } from "../src/core/geometry";
 import { isProject } from "../src/core/validation";
 import { defaultBrush } from "../src/core/brush";
+import { defaultGlyphEffects } from "../src/core/glyphEffects";
 import { projectStorage } from "../src/features/project/projectStorage";
 
 register("./support/domLoader.mjs", import.meta.url);
@@ -491,7 +492,7 @@ test("sentence grids default on, hide only matched cells and remember the prefer
     reopenedCells[0].classList.contains("border-transparent"),
     false,
   );
-  assert.ok(reopenedCells[0].classList.contains("bg-[#fcfdf9]"));
+  assert.ok(reopenedCells[0].classList.contains("bg-transparent"));
   assert.equal(
     JSON.parse(dom.window.localStorage.getItem("coinage.settings")!)
       .showSentenceGrid,
@@ -515,7 +516,7 @@ test("the sentence grid toggle still works when local settings cannot be saved",
   );
 });
 
-test("library cards open the selected glyph, preserve the editor view and preview text, and effects stay disabled", async (t) => {
+test("library cards open the selected glyph and navigation preserves the editor view and preview text", async (t) => {
   const { container } = await render(t);
   await inputValue(library(container).querySelector("input")!, "甲乙");
   await click(button(container, "编辑 乙"));
@@ -528,10 +529,17 @@ test("library cards open the selected glyph, preserve the editor view and previe
   );
   assert.ok(editor(container).querySelector(".layers-section"));
   const canvas = editor(container).querySelector("svg");
-  const effects = button(container, "特效");
-  assert.equal(effects.disabled, true);
-  await click(effects);
-  assert.equal(editor(container).hidden, false);
+  const styles = button(container, "样式");
+  assert.equal(styles.disabled, false);
+  await click(styles);
+  assert.equal(styles.getAttribute("aria-current"), "page");
+  assert.equal(editor(container).hidden, true);
+  assert.equal(library(container).parentElement!.hidden, true);
+  const stylePage = container.querySelector<HTMLElement>(
+    'main[aria-label="样式"]',
+  )!;
+  assert.equal(stylePage.parentElement!.hidden, false);
+  assert.ok(stylePage.querySelector('[aria-label="乙预览"] path'));
   await click(button(container, "字库"));
   assert.equal(library(container).querySelector("input")!.value, "甲乙");
   await click(button(container, "造字"));
@@ -540,6 +548,162 @@ test("library cards open the selected glyph, preserve the editor view and previe
     editor(container).querySelector(".glyph-card.selected strong")?.textContent,
     "乙",
   );
+});
+
+test("appearance controls update global color and save while editor shortcuts stay isolated", async (t) => {
+  const { container, project, saved } = await render(t);
+  await click(button(container, "编辑 乙"));
+  await key("a", true);
+  const before = editor(container)
+    .querySelector(".glyph-card.selected path")!
+    .getAttribute("d");
+  assert.equal(
+    editor(container).querySelector('input[aria-label="笔画颜色"]'),
+    null,
+  );
+  assert.equal(editor(container).textContent?.includes("外观"), false);
+  await click(button(container, "样式"));
+  const stylePage = container.querySelector<HTMLElement>(
+    'main[aria-label="样式"]',
+  )!;
+  const preview = stylePage.querySelector("path")!;
+  assert.equal(
+    preview.getAttribute("d"),
+    glyphPath(project.glyphs[1], project.brush),
+  );
+  await click(button(stylePage, "使用颜色 #4562a6"));
+  assert.equal(preview.getAttribute("fill"), "#4562a6");
+  await inputValue(
+    stylePage.querySelector('input[aria-label="笔画颜色"]')!,
+    "#123456",
+  );
+  assert.equal(preview.getAttribute("fill"), "#123456");
+  assert.ok(stylePage.textContent?.includes("#123456"));
+  for (const [value, ctrl] of [
+    ["Delete", false],
+    ["ArrowRight", false],
+    ["z", true],
+    ["p", false],
+  ] as const)
+    await key(value, ctrl);
+  assert.equal(preview.getAttribute("fill"), "#123456");
+  assert.equal(
+    editor(container)
+      .querySelector(".glyph-card.selected path")!
+      .getAttribute("d"),
+    before,
+  );
+  await key("s", true);
+  assert.equal(saved.at(-1)?.style?.color, "#123456");
+  assert.deepEqual(saved.at(-1)?.glyphs, project.glyphs);
+  assert.deepEqual(saved.at(-1)?.glyphs[0], project.glyphs[0]);
+  await click(button(container, "造字"));
+  assert.equal(
+    editor(container)
+      .querySelector(".glyph-card.selected path")!
+      .getAttribute("fill"),
+    "#123456",
+  );
+  await click(button(editor(container), "甲"));
+  await click(button(container, "样式"));
+  assert.ok(stylePage.querySelector('[aria-label="甲预览"]'));
+  assert.equal(preview.getAttribute("fill"), "#123456");
+  assert.equal(
+    stylePage.querySelector<HTMLInputElement>('input[aria-label="笔画颜色"]')!
+      .value,
+    "#123456",
+  );
+});
+
+test("effects preserve separate parameters, save slider transactions and appear only in style and sentence previews", async (t) => {
+  const { container, project, saved } = await render(t);
+  await click(button(container, "编辑 乙"));
+  await click(button(container, "样式"));
+  const stylePage = container.querySelector<HTMLElement>(
+    'main[aria-label="样式"]',
+  )!;
+  await click(button(stylePage, "燃烧"));
+  await click(button(stylePage, "幽蓝"));
+  const slider = stylePage.querySelector<HTMLInputElement>(
+    'input[aria-label="火势"]',
+  )!;
+  await act(async () => slider.focus());
+  await inputValue(slider, "95");
+  await act(async () => slider.blur());
+  await click(button(stylePage, "符文"));
+  await click(button(stylePage, "紫晶奥术"));
+  for (const [label, value] of [["流光方向", "270"]] as const) {
+    const range = stylePage.querySelector<HTMLInputElement>(
+      `input[type="range"][aria-label="${label}"]`,
+    )!;
+    await act(async () => range.focus());
+    await inputValue(range, value);
+    await act(async () => range.blur());
+  }
+  await click(button(stylePage, "燃烧"));
+  assert.equal(
+    stylePage.querySelector<HTMLInputElement>('input[aria-label="火势"]')!
+      .value,
+    "95",
+  );
+  assert.equal(button(stylePage, "幽蓝").getAttribute("aria-pressed"), "true");
+  const direction = stylePage.querySelector<HTMLInputElement>(
+    'input[type="range"][aria-label="火焰方向"]',
+  )!;
+  await act(async () => direction.focus());
+  await inputValue(direction, "90");
+  await act(async () => direction.blur());
+  await click(button(stylePage, "符文"));
+  assert.equal(
+    stylePage.querySelector<HTMLInputElement>('input[aria-label="符文光色"]')!
+      .value,
+    "#bd87ff",
+  );
+  await key("s", true);
+  const effect = saved.at(-1)!.style!.effects;
+  assert.equal(effect.type, "rune");
+  assert.deepEqual(effect.fire, {
+    ...defaultGlyphEffects.fire,
+    palette: "azure",
+    intensity: 95,
+    direction: 90,
+  });
+  assert.equal(effect.rune.color, "#bd87ff");
+  assert.equal(effect.rune.direction, 270);
+  assert.deepEqual(saved.at(-1)!.glyphs[1].nodes, project.glyphs[1].nodes);
+  assert.deepEqual(saved.at(-1)!.glyphs, project.glyphs);
+  await click(button(container, "字库"));
+  await inputValue(library(container).querySelector("input")!, "乙甲乙");
+  const sentence = library(container).querySelector('[aria-label="句子预览"]')!;
+  assert.equal(
+    sentence.querySelectorAll(`[data-effect-glyph="${project.glyphs[1].id}"]`)
+      .length,
+    2,
+  );
+  assert.ok(sentence.closest(".glyph-effects-preview"));
+  assert.equal(sentence.classList.contains("bg-[#101722]"), false);
+  assert.equal(sentence.querySelectorAll("[data-effect-glyph]").length, 3);
+  assert.equal(
+    library(container)
+      .querySelector('[aria-label="全部字符"]')!
+      .querySelector("[data-effect-glyph]"),
+    null,
+  );
+  assert.equal(editor(container).querySelector(".glyph-effects-preview"), null);
+  await click(button(container, "样式"));
+  await click(button(container, "造字"));
+  await click(button(editor(container), "甲"));
+  await click(button(container, "样式"));
+  assert.equal(
+    stylePage.querySelector<HTMLInputElement>(
+      'input[type="range"][aria-label="流光方向"]',
+    )!.value,
+    "270",
+  );
+  await click(button(stylePage, "无"));
+  assert.equal(stylePage.querySelector('input[aria-label="辉光强度"]'), null);
+  await key("s", true);
+  assert.equal(saved.at(-1)!.style!.effects.type, "none");
 });
 
 test("library keyboard events cannot undo or delete editor content, and edits refresh the sentence preview", async (t) => {

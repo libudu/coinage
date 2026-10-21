@@ -3,7 +3,6 @@ import {
   TransactionalNumberField,
   TransactionalTextInput,
 } from "./TransactionalInput";
-import { Button } from "../../shared/components/Button";
 import { TransactionalRange } from "./TransactionalRange";
 import type { TransactionId } from "../project/projectStore";
 import { clamp, distance } from "../../core/geometry";
@@ -292,62 +291,6 @@ export function Properties({ onExportSvg, onExportPng }: GlyphExportProps) {
           </Section>
         )}
         <BrushControls />
-        <Section title="外观">
-          <div
-            className="color-row flex items-center gap-[10px] [font-family:ui-monospace,_monospace] text-[12px] bg-[#f1f4eb]
-            border [border-style:solid] border-[#e6ebdd] rounded-[5px] h-[35px] py-0 px-[8px] text-[#748464]"
-          >
-            <label
-              className="color-swatch block w-[19px] h-[19px] rounded-[4px] border [border-style:solid] border-[#0000000a]
-              overflow-hidden cursor-pointer [&>input]:w-[40px] [&>input]:h-[40px] [&>input]:m-[-9px]
-              [&>input]:cursor-pointer [&>input]:opacity-0"
-              style={{ background: glyph.color }}
-            >
-              <input
-                type="color"
-                aria-label="笔画颜色"
-                value={glyph.color}
-                onChange={(e) =>
-                  update((g) => {
-                    g.color = e.target.value;
-                  })
-                }
-              />
-            </label>
-            <span>{glyph.color.toUpperCase()}</span>
-            <span className="color-opacity ml-auto text-[12px] text-[#96a287] border-l [border-left-style:solid] border-l-[#dfe6d4] pl-[10px]">
-              100%
-            </span>
-          </div>
-          <div
-            className="preset-colors flex gap-[12px] mt-[13px] p-[2px] [&>button]:w-[17px] [&>button]:h-[17px]
-            [&>button]:rounded-[50%] [&>button]:border-[2px] [&>button]:[border-style:solid]
-            [&>button]:border-[#fafbf7] laptop:gap-[11px] tablet:gap-[10px] [&>button.selected]:[outline:1px_solid_#8f9f80] [&>button.selected]:outline-offset-[2px]"
-          >
-            {[
-              "#243d34",
-              "#222222",
-              "#7b281d",
-              "#4562a6",
-              "#88729b",
-              "#b69250",
-            ].map((color) => (
-              <Button
-                variant="bare"
-                key={color}
-                className={glyph.color === color ? "selected" : ""}
-                style={{ background: color }}
-                title={color}
-                aria-label={`使用颜色 ${color}`}
-                onClick={() =>
-                  update((g) => {
-                    g.color = color;
-                  })
-                }
-              />
-            ))}
-          </div>
-        </Section>
         {glyph.reference && (
           <Section
             title="原图"

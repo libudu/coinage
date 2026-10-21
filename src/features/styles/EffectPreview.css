@@ -1,0 +1,9 @@
+.glyph-effects-preview > .glyph-effects-canvas {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.glyph-effects-preview [data-effect-ready="true"] > svg {
+  opacity: 0;
+}

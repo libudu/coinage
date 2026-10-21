@@ -14,6 +14,10 @@ const xml = (s: string) =>
         "'": "&apos;",
       })[c]!,
   );
-export function exportSvg(g: Glyph, defaults?: BrushDefaults): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640"><title>${xml(g.name)}</title><path fill="${xml(g.color)}" d="${glyphPath(g, defaults)}"/></svg>`;
+export function exportSvg(
+  g: Glyph,
+  defaults?: BrushDefaults,
+  color = g.color,
+): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640"><title>${xml(g.name)}</title><path fill="${xml(color)}" d="${glyphPath(g, defaults)}"/></svg>`;
 }

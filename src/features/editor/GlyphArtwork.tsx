@@ -18,6 +18,7 @@ type Props = {
   tool: Tool;
   showReference: boolean;
   brush?: BrushDefaults;
+  color?: string;
   scale: number;
   grid: boolean;
   preview: boolean;
@@ -36,6 +37,7 @@ export function GlyphArtwork({
   tool,
   showReference,
   brush,
+  color = glyph.color,
   scale,
   grid,
   preview,
@@ -101,7 +103,7 @@ export function GlyphArtwork({
           pointerEvents="none"
         />
       )}
-      <g fill={glyph.color}>
+      <g fill={color}>
         <path
           d={outlines.map(({ path }) => path).join(" ")}
           pointerEvents="none"

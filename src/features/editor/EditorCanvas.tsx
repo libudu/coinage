@@ -36,6 +36,7 @@ export function EditorCanvas({
   const tool = useProject((s) => s.session.tool);
   const showReference = useProject((s) => s.session.showReference);
   const brush = useProject((s) => s.project.brush);
+  const color = useProject((s) => s.project.style?.color);
   const { setTool, select } = useProjectActions();
   const [grid, setGrid] = useState(true),
     [nodesVisible, setNodesVisible] = useState(true),
@@ -466,6 +467,7 @@ export function EditorCanvas({
               tool={tool}
               showReference={showReference}
               brush={brush}
+              color={color}
               scale={scale}
               grid={grid}
               preview={preview}

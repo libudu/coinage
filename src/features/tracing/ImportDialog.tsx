@@ -50,11 +50,13 @@ function alignedReference(raster: Raster, offset: Point, scale: number) {
 export function ImportDialog({
   source,
   brush,
+  color,
   onClose,
   onImport,
 }: {
   source: { src: string; name: string };
   brush?: BrushDefaults;
+  color?: string;
   onClose: () => void;
   onImport: (g: Glyph) => void;
 }) {
@@ -298,7 +300,7 @@ export function ImportDialog({
                   <path
                     data-trace-artwork=""
                     d={glyphPath(resizedPreview.glyph, brush)}
-                    fill={resizedPreview.glyph.color}
+                    fill={color ?? resizedPreview.glyph.color}
                     opacity={busy ? 0.4 : 1}
                   />
                 )}

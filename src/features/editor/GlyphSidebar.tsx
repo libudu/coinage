@@ -20,6 +20,7 @@ type Props = {
 export function GlyphSidebar({ openGlyphContextMenu, importGlyph }: Props) {
   const glyphs = useProject((s) => s.project.glyphs);
   const brush = useProject((s) => s.project.brush);
+  const color = useProject((s) => s.project.style?.color);
   const glyph = useActiveGlyph();
   const strokeId = useProject((s) => s.session.strokeId);
   const nodeIds = useProject((s) => s.session.nodeIds);
@@ -84,7 +85,7 @@ export function GlyphSidebar({ openGlyphContextMenu, importGlyph }: Props) {
               laptop:[&_svg]:h-[45px] tablet:w-[41px] tablet:h-[45px] tablet:[&_svg]:w-[39px] tablet:[&_svg]:h-[39px]
               compact:h-[44px] compact:w-[47px]"
             >
-              <GlyphPreview glyph={g} brush={brush} />
+              <GlyphPreview glyph={g} brush={brush} color={color} />
             </div>
             <span
               className="glyph-card-text min-w-0 flex flex-col gap-[8px] [&_strong]:text-[12px] [&_strong]:font-[550]

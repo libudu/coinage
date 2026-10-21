@@ -1,3 +1,5 @@
+import { defaultProjectStyle } from "../../core/glyphEffects";
+import type { ProjectStyle } from "../../core/glyphEffects";
 import { freeze, produce } from "immer";
 import { createStore } from "zustand/vanilla";
 import { emptyGlyph, uid } from "../../core/model";
@@ -65,6 +67,10 @@ export type ProjectState = {
     removeSelection: () => boolean;
     duplicateStroke: () => void;
     moveSelection: (offset: Point, transaction?: TransactionId) => void;
+    changeStyle: (
+      recipe: (style: ProjectStyle) => void,
+      transaction?: TransactionId,
+    ) => void;
     changeBrush: (
       patch: Partial<BrushDefaults>,
       transaction?: TransactionId,
@@ -129,7 +135,8 @@ function rebaseHistory(
     const project = produce(snapshot, recipe);
     if (
       sameValue(project.glyphs, previous.glyphs) &&
-      sameValue(project.brush, previous.brush)
+      sameValue(project.brush, previous.brush) &&
+      sameValue(project.style, previous.style)
     )
       continue;
     next.push(project);
@@ -462,6 +469,12 @@ export function createProjectStore(initialProject: Project) {
         const ids = get().session.nodeIds;
         actions.update((g) => {
           translateNodes(g, ids, offset);
+        }, transaction);
+      },
+      changeStyle(recipe, transaction) {
+        actions.update((_, project) => {
+          project.style ??= structuredClone(defaultProjectStyle);
+          recipe(project.style);
         }, transaction);
       },
       changeBrush(patch, transaction) {

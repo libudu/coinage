@@ -1,3 +1,4 @@
+import { isProjectStyle } from "./glyphEffects";
 import { isBrushDefaults } from "./brush";
 import type { Project } from "./model";
 
@@ -73,6 +74,7 @@ export function isProject(value: unknown): value is Project {
     return (
       p.version === 1 &&
       (p.brush === undefined || isBrushDefaults(p.brush)) &&
+      (p.style === undefined || isProjectStyle(p.style)) &&
       Array.isArray(p.glyphs) &&
       p.glyphs.length > 0 &&
       p.glyphs.length <= 100 &&

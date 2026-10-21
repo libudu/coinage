@@ -21,6 +21,7 @@ import { GlyphSidebar } from "../features/editor/GlyphSidebar";
 import { GlyphBasicInfoDialog } from "../features/editor/GlyphBasicInfoDialog";
 import { GlyphDeleteDialog } from "../features/editor/GlyphDeleteDialog";
 import { GlyphLibrary } from "../features/library/GlyphLibrary";
+import { StyleWorkspace } from "../features/styles/StyleWorkspace";
 import { AppNavigation } from "./AppNavigation";
 import type { WorkspacePage } from "./AppNavigation";
 
@@ -35,10 +36,11 @@ export default function App({ initialProject }: { initialProject: Project }) {
 }
 
 function ProjectImportDialog(
-  props: Omit<Parameters<typeof ImportDialog>[0], "brush">,
+  props: Omit<Parameters<typeof ImportDialog>[0], "brush" | "color">,
 ) {
   const brush = useProject((s) => s.project.brush);
-  return <ImportDialog {...props} brush={brush} />;
+  const color = useProject((s) => s.project.style?.color);
+  return <ImportDialog {...props} brush={brush} color={color} />;
 }
 
 function ProjectSaveError({ exportProject }: { exportProject: () => void }) {
@@ -166,6 +168,7 @@ function Workspace() {
         <ProjectSaveError exportProject={exportProject} />
         <div hidden={page !== "library"} className="min-h-0 flex-1">
           <GlyphLibrary
+            active={page === "library"}
             onEdit={(id) => {
               switchGlyph(id);
               changePage("editor");
@@ -192,6 +195,9 @@ function Workspace() {
             modalOpen={editorBlocked}
           />
           <Properties onExportSvg={saveSvg} onExportPng={savePng} />
+        </div>
+        <div hidden={page !== "styles"} className="min-h-0 flex-1">
+          <StyleWorkspace active={page === "styles"} />
         </div>
       </div>
       {contextMenu && (

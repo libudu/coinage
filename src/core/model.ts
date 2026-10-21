@@ -1,3 +1,4 @@
+import type { ProjectStyle } from "./glyphEffects";
 import type { BrushDefaults } from "./brush";
 
 export type Point = { x: number; y: number };
@@ -50,6 +51,7 @@ export type Project = {
   glyphs: Glyph[];
   activeId: string;
   brush?: BrushDefaults;
+  style?: ProjectStyle;
 };
 export const uid = () => crypto.randomUUID();
 export const emptyGlyph = (name = "新字符"): Glyph => ({

@@ -43,7 +43,7 @@ export function useProjectFiles() {
       { project } = state,
       glyph = activeGlyph(state);
     download(
-      exportSvg(glyph, project.brush),
+      exportSvg(glyph, project.brush, project.style?.color),
       `${safeName(glyph.name)}.svg`,
       "image/svg+xml",
     );
@@ -55,7 +55,9 @@ export function useProjectFiles() {
       { project } = state,
       glyph = activeGlyph(state);
     const url = URL.createObjectURL(
-        new Blob([exportSvg(glyph, project.brush)], { type: "image/svg+xml" }),
+        new Blob([exportSvg(glyph, project.brush, project.style?.color)], {
+          type: "image/svg+xml",
+        }),
       ),
       img = new Image();
     const fail = () => toast("PNG 导出失败", { tone: "error" });

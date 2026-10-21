@@ -476,6 +476,8 @@ test("PNG feedback waits for encoding and handles null blobs and canvas failures
 });
 
 test("workspace export menus block canvas undo and Tab preview, while modal save still reaches autosave", async (t) => {
+  // 固定自动保存窗口，避免并行测试耗时改变 Ctrl+S 前的保存次数。
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   let saves = 0;
   t.mock.method(projectStorage, "save", async () => {
     saves++;

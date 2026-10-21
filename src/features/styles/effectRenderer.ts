@@ -1,0 +1,317 @@
+import {
+  Application,
+  Color,
+  Container,
+  Filter,
+  GlProgram,
+  Sprite,
+  Texture,
+} from "pixi.js";
+import { GlowFilter } from "pixi-filters/glow";
+import type { BrushDefaults } from "../../core/brush";
+import { glyphPath } from "../../core/geometry";
+import { defaultGlyphEffects, firePalettes } from "../../core/glyphEffects";
+import type { GlyphEffects } from "../../core/glyphEffects";
+import type { Glyph } from "../../core/model";
+import { effectFragment, effectVertex } from "./effectShaders";
+import { buildFlameField, flameFieldScale, flameFieldSize } from "./flameField";
+
+type GlyphTexture = {
+  canvas: HTMLCanvasElement;
+  mask: Texture;
+  flame: Texture | null;
+  direction: number;
+  references: number;
+};
+
+type Entry = {
+  container: Container;
+  sprite: Sprite;
+  filter: Filter;
+  glow: GlowFilter;
+  path: string;
+  textures: GlyphTexture;
+};
+
+function createMask(path: string) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 512;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("无法创建字形纹理");
+  context.scale(512 / 800, 512 / 800);
+  context.translate(80, 80);
+  context.fillStyle = "white";
+  context.fill(new Path2D(path));
+  return {
+    canvas,
+    mask: Texture.from(canvas),
+    flame: null,
+    direction: -1,
+    references: 0,
+  };
+}
+
+function createFlameTexture(mask: HTMLCanvasElement, direction: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = flameFieldSize;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("无法创建火焰纹理");
+  context.translate(flameFieldSize / 2, flameFieldSize / 2);
+  context.rotate((-direction * Math.PI) / 180);
+  context.scale(flameFieldScale, flameFieldScale);
+  context.drawImage(
+    mask,
+    -flameFieldSize / 2,
+    -flameFieldSize / 2,
+    flameFieldSize,
+    flameFieldSize,
+  );
+  const image = context.getImageData(0, 0, flameFieldSize, flameFieldSize);
+  image.data.set(buildFlameField(image.data, flameFieldSize));
+  context.putImageData(image, 0, 0);
+  return Texture.from(canvas);
+}
+
+export async function createEffectScene(host: HTMLElement) {
+  const app = new Application();
+  await app.init({
+    preference: "webgl",
+    backgroundAlpha: 0,
+    antialias: true,
+    resolution: Math.min(window.devicePixelRatio || 1, 2),
+    autoDensity: true,
+    autoStart: false,
+    width: 1,
+    height: 1,
+  });
+  app.canvas.setAttribute("aria-hidden", "true");
+  app.canvas.className = "glyph-effects-canvas";
+  host.append(app.canvas);
+  const entries = new Map<HTMLElement, Entry>();
+  // 造句中的重复字形共享遮罩和供燃场；最后一个可见实例离开时释放。
+  const textures = new Map<string, GlyphTexture>();
+  let glyphs: readonly Glyph[] = [],
+    brush: BrushDefaults | undefined,
+    effects: GlyphEffects = defaultGlyphEffects;
+  let destroyed = false;
+  let time = 0;
+  let inView = true;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const program = GlProgram.from({
+    vertex: effectVertex,
+    fragment: effectFragment,
+    name: "coinage-glyph-effects",
+  });
+  // 滤镜会共享临时纹理绑定；视口变化回收纹理前先解除引用。
+  const releaseFilterInputs = () => {
+    for (const { filter, glow } of entries.values())
+      for (const shader of [filter, glow]) {
+        const inputs = shader.groups[0];
+        if (!inputs) continue;
+        inputs.setResource(Texture.EMPTY.source, 1);
+        inputs.setResource(Texture.EMPTY.source.style, 2);
+        inputs.setResource(Texture.EMPTY.source, 3);
+      }
+  };
+  const dispose = (element: HTMLElement, entry: Entry) => {
+    delete element.dataset.effectReady;
+    entry.container.destroy({ children: true });
+    entry.filter.destroy();
+    entry.glow.destroy();
+    if (--entry.textures.references === 0) {
+      entry.textures.mask.destroy(true);
+      entry.textures.flame?.destroy(true);
+      textures.delete(entry.path);
+    }
+    entries.delete(element);
+  };
+
+  const layout = () => {
+    if (destroyed) return;
+    const rect = host.getBoundingClientRect();
+    const top = Math.max(0, -rect.top - 40);
+    const height = Math.max(
+      1,
+      Math.min(rect.height - top, window.innerHeight + 80),
+    );
+    app.canvas.style.top = `${top - 32}px`;
+    app.canvas.style.left = "-32px";
+    const width = Math.max(1, rect.width + 64);
+    if (
+      Math.abs(app.screen.width - width) > 0.5 ||
+      Math.abs(app.screen.height - height - 64) > 0.5
+    ) {
+      releaseFilterInputs();
+      app.renderer.resize(width, height + 64);
+    }
+    const retained = new Set<HTMLElement>();
+    const oldFlames: Texture[] = [];
+    for (const element of host.querySelectorAll<HTMLElement>(
+      "[data-effect-glyph]",
+    )) {
+      const glyph = glyphs.find((g) => g.id === element.dataset.effectGlyph);
+      if (!glyph || effects.type === "none") continue;
+      const box = element.getBoundingClientRect();
+      if (!box.width || box.bottom < -40 || box.top > window.innerHeight + 40)
+        continue;
+      const path = glyphPath(glyph, brush);
+      if (!path) continue;
+      let entry = entries.get(element);
+      if (entry && entry.path !== path) {
+        dispose(element, entry);
+        entry = undefined;
+      }
+      if (!entry) {
+        let glyphTexture = textures.get(path);
+        if (!glyphTexture) {
+          glyphTexture = createMask(path);
+          textures.set(path, glyphTexture);
+        }
+        glyphTexture.references++;
+        const sprite = new Sprite(Texture.WHITE);
+        const filter = new Filter({
+          glProgram: program,
+          clipToViewport: false,
+          resources: {
+            uMask: glyphTexture.mask.source,
+            uFlame: Texture.EMPTY.source,
+            effectUniforms: {
+              uTime: { value: time, type: "f32" },
+              uKind: { value: 1, type: "f32" },
+              uIntensity: { value: 0.7, type: "f32" },
+              uSpeed: { value: 0.8, type: "f32" },
+              uAngle: { value: 0, type: "f32" },
+              uSeed: { value: entries.size * 1.7, type: "f32" },
+              uCold: { value: [0, 0, 0], type: "vec3<f32>" },
+              uWarm: { value: [1, 0.4, 0.1], type: "vec3<f32>" },
+              uHot: { value: [1, 1, 1], type: "vec3<f32>" },
+            },
+          },
+        });
+        const glow = new GlowFilter({
+          distance: 7,
+          quality: 0.18,
+          outerStrength: 1.5,
+        });
+        const container = new Container();
+        sprite.filters = [filter];
+        container.filters = [glow];
+        container.addChild(sprite);
+        app.stage.addChild(container);
+        entry = {
+          container,
+          sprite,
+          filter,
+          glow,
+          path,
+          textures: glyphTexture,
+        };
+        entries.set(element, entry);
+      }
+      retained.add(element);
+      const effect = effects;
+      const fire = effect.type === "fire";
+      const settings = fire ? effect.fire : effect.rune;
+      const direction = settings.direction % 360;
+      if (
+        fire &&
+        (!entry.textures.flame || entry.textures.direction !== direction)
+      ) {
+        const flame = createFlameTexture(entry.textures.canvas, direction);
+        if (entry.textures.flame) oldFlames.push(entry.textures.flame);
+        entry.textures.flame = flame;
+        entry.textures.direction = direction;
+      }
+      entry.filter.resources.uFlame = (
+        fire ? entry.textures.flame! : Texture.EMPTY
+      ).source;
+      const palette = firePalettes[effect.fire.palette];
+      const color = fire ? palette.warm : effect.rune.color;
+      const uniforms = entry.filter.resources.effectUniforms.uniforms;
+      uniforms.uKind = fire ? 1 : 2;
+      uniforms.uIntensity = settings.intensity / 100;
+      uniforms.uSpeed = settings.speed / 100;
+      uniforms.uAngle = (direction * Math.PI) / 180;
+      uniforms.uCold = new Color(fire ? palette.cold : color)
+        .toArray()
+        .slice(0, 3);
+      uniforms.uWarm = new Color(color).toArray().slice(0, 3);
+      uniforms.uHot = new Color(fire ? palette.hot : "#f4fbff")
+        .toArray()
+        .slice(0, 3);
+      entry.glow.color = color;
+      entry.glow.outerStrength = fire
+        ? 0.45 + settings.intensity / 110
+        : 1.0 + settings.intensity / 70;
+      const size = box.width * 1.25;
+      entry.sprite.width = entry.sprite.height = size;
+      entry.container.position.set(
+        box.left - rect.left - box.width * 0.125 + 32,
+        box.top - rect.top - box.height * 0.125 - top + 32,
+      );
+    }
+    for (const [element, entry] of entries)
+      if (!retained.has(element)) dispose(element, entry);
+    // 所有共享实例换绑后再回收旧方向的纹理。
+    for (const flame of oldFlames) flame.destroy(true);
+    // 成功绘制后才隐藏原始 SVG；无 GPU 时仍显示原字形。
+    app.render();
+    for (const element of retained) element.dataset.effectReady = "true";
+  };
+
+  const tick = () => {
+    time += Math.min(app.ticker.deltaMS, 50) / 1000;
+    for (const entry of entries.values())
+      entry.filter.resources.effectUniforms.uniforms.uTime = time;
+  };
+  app.ticker.maxFPS = 40;
+  app.ticker.add(tick);
+  const syncPlayback = () => {
+    if (destroyed) return;
+    if (!document.hidden && inView && !reducedMotion.matches) app.start();
+    else {
+      app.stop();
+      app.render();
+    }
+  };
+  const resize = new ResizeObserver(layout);
+  resize.observe(host);
+  const visibility = new IntersectionObserver(([entry]) => {
+    inView = entry.isIntersecting;
+    syncPlayback();
+  });
+  visibility.observe(host);
+  window.addEventListener("scroll", layout, true);
+  window.addEventListener("resize", layout);
+  document.addEventListener("visibilitychange", syncPlayback);
+  reducedMotion.addEventListener("change", syncPlayback);
+  syncPlayback();
+  return {
+    update(
+      nextGlyphs: readonly Glyph[],
+      nextBrush: BrushDefaults | undefined,
+      nextEffects: GlyphEffects,
+    ) {
+      glyphs = nextGlyphs;
+      brush = nextBrush;
+      effects = nextEffects;
+      layout();
+    },
+    destroy() {
+      if (destroyed) return;
+      destroyed = true;
+      app.stop();
+      releaseFilterInputs();
+      resize.disconnect();
+      visibility.disconnect();
+      window.removeEventListener("scroll", layout, true);
+      window.removeEventListener("resize", layout);
+      document.removeEventListener("visibilitychange", syncPlayback);
+      reducedMotion.removeEventListener("change", syncPlayback);
+      for (const [element, entry] of entries) dispose(element, entry);
+      app.destroy(true, { children: true });
+    },
+  };
+}
+
+export type EffectScene = Awaited<ReturnType<typeof createEffectScene>>;

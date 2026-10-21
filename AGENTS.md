@@ -11,9 +11,10 @@ src/
 ├── main.tsx                    # React 入口与全局样式加载
 ├── app/
 │   ├── App.tsx                # 页面切换、工作台组装、菜单与弹窗状态
-│   └── AppNavigation.tsx      # 左侧字库、造字与特效导航
+│   └── AppNavigation.tsx      # 左侧字库、造字与样式导航
 ├── core/
 │   ├── model.ts               # 数据类型、ID 与空字形/笔画工厂
+│   ├── glyphEffects.ts          # 全局样式、燃烧/符文配置、预设与校验
 │   ├── geometry.ts            # 几何工具、中心线、连接关系与填充轮廓
 │   ├── strokeEditing.ts       # 边控制柄与普通编辑、拓扑变化的同步
 │   ├── svg.ts                 # SVG 文档输出与 XML 转义
@@ -37,7 +38,7 @@ src/
 │   │   ├── useEditorCommands.ts # 删除、复制、撤销重做与编辑快捷键
 │   │   ├── nodeSelection.ts    # 节点集合、锁定保护、整体位移与批量删除
 │   │   ├── strokeEdges.ts      # 笔画边定位、中点插入与曲线拆分
-│   │   ├── Properties.tsx      # 节点、笔画、笔锋和外观属性
+│   │   ├── Properties.tsx      # 节点、笔画、笔锋和原图属性
 │   │   ├── GlyphExport.tsx     # 属性栏导出按钮与格式菜单状态
 │   │   ├── EditorContextMenu.tsx # 字符、笔画与节点操作右键菜单
 │   │   ├── GlyphBasicInfoDialog.tsx # 字符对应汉语与描述编辑弹窗
@@ -49,6 +50,14 @@ src/
 │   │   ├── TransactionalInput.tsx # 手稿文本与数值输入的事务、撤销和目标隔离
 │   │   ├── TransactionalRange.tsx # 手稿滑块的指针、键盘与事务边界
 │   │   └── GlyphPreview.tsx    # 字形缩略预览
+│   ├── styles/
+│   │   ├── StyleWorkspace.tsx # 当前字符预览与外观配置
+│   │   ├── EffectControls.tsx # 全局特效、配色、方向与事务滑块
+│   │   ├── EffectPreview.tsx  # 共享特效预览与异步渲染生命周期
+│   │   ├── EffectPreview.css  # 画布叠加与原始预览切换
+│   │   ├── effectRenderer.ts  # PixiJS 共享场景、字形/供燃纹理缓存与资源释放
+│   │   ├── flameField.ts      # 方向对齐遮罩的连续供燃距离与强度
+│   │   └── effectShaders.ts   # 分层卷曲燃烧与无外围法阵的流光符文着色器
 │   ├── tracing/
 │   │   ├── ImportDialog.tsx    # 图片导入与识别参数预览
 │   │   ├── trace.ts            # 前景分离、骨架提取、路径简化与图片读取
@@ -89,6 +98,7 @@ src/
 │   └── base.css               # 全局重置、主题变量、最小页面宽度与减少动画规则
 └── static/                     # 原始素材：文字/、笔锋/
 public/reference.png            # 可直接访问的导入示例
+tests/glyphEffects.test.ts      # 连续供燃场、特效参数校验、增量保存与导出隔离测试
 tests/core.test.ts              # 几何、描摹、导出与数据校验测试
 tests/nodeSelection.test.ts     # 多节点移动、边界、锁定与删除测试
 tests/strokeEdges.test.ts       # 边定位、共享曲线与笔锋、中点持久化与历史回归测试
@@ -104,7 +114,7 @@ tests/canvasSelection.test.ts    # 框选、追加选择、坐标变换、取消
 tests/importPreview.test.ts      # 导入粗细实时预览、识别隔离与原图对齐测试
 tests/importSettings.test.ts     # 导入参数校验、后端读写队列与重试测试
 tests/filenameInfo.test.ts       # 文件名模板、字段顺序、字面匹配与无效模板测试
-tests/workspaceNavigation.test.ts # 字库预览、基本信息、页面切换与快捷键隔离测试
+tests/workspaceNavigation.test.ts # 字库预览、样式配置、基本信息、页面切换与快捷键隔离测试
 tests/formControls.test.ts       # 文本、数值、分段选择与手稿输入事务回归测试
 tests/sharedComponents.test.ts   # 公共弹窗、菜单、按钮、提示及导出反馈回归测试
 tests/localSettings.test.ts      # 前端配置默认值、持久化、无效数据与存储异常测试
@@ -141,6 +151,7 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 - 历史保留 60 步，新提交清空重做，取消或无变化不记历史。选择、工具、原图显示属于会话，不进入历史或保存。
 - 撤销重做仅针对造字编辑。字符新建、导入、基本信息编辑、复制和删除同步到历史快照，不新增历史或清空有效重做；删除字符时清理仅影响该字符的历史。字符删除须二次确认且无法撤销，节点和笔画删除仍可撤销。
 - 撤销重做、字符或选择目标切换须结束旧事务并清理失效选择；撤销优先保留当前仍存在的字符。事务内选中新建节点须传入所属 token。
+- 颜色与特效统一存于 `Project.style`，通过 `changeStyle` 修改，对全部现有及新增字符生效。全局颜色用于画布、缩略图、导入预览和导出；特效只在样式展示与字库造句预览生效，不应用于造字画布、字符列表和 SVG/PNG 导出。预览保持透明背景；特效方向为 0–360°，0° 朝上、顺时针旋转，只旋转特效而不旋转字形。隐藏预览释放 GPU 资源，减少动画偏好下显示静态效果。
 - 笔锋统一存于 `Project.brush`，通过 `changeGlobalBrush` 修改。画布、缩略图、导出共用配置，笔画锁定不阻止全局笔锋修改。
 
 ### 保存与数据

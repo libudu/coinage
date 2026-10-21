@@ -1,3 +1,5 @@
+import { defaultProjectStyle } from "../../core/glyphEffects";
+import { EffectPreview } from "../styles/EffectPreview";
 import { Input } from "../../shared/components/Input";
 import { Button } from "../../shared/components/Button";
 import { useMemo, useState } from "react";
@@ -11,13 +13,19 @@ import { GlyphPreview } from "../editor/GlyphPreview";
 import { useProject } from "../project/useProject";
 
 type Props = {
+  active?: boolean;
   onEdit: (id: string) => void;
   openGlyphContextMenu: (id: string, position: Point) => void;
 };
 
-export function GlyphLibrary({ onEdit, openGlyphContextMenu }: Props) {
+export function GlyphLibrary({
+  onEdit,
+  openGlyphContextMenu,
+  active = true,
+}: Props) {
   const glyphs = useProject((s) => s.project.glyphs);
   const brush = useProject((s) => s.project.brush);
+  const style = useProject((s) => s.project.style ?? defaultProjectStyle);
   const [sentence, setSentence] = useState("");
   const [showGrid, setShowGrid] = useState(
     () => loadLocalSettings().showSentenceGrid,
@@ -84,22 +92,37 @@ export function GlyphLibrary({ onEdit, openGlyphContextMenu }: Props) {
             </Button>
           </div>
           {preview.length > 0 && (
-            <div
-              role="group"
-              aria-label="句子预览"
-              className="mt-[24px] flex flex-wrap gap-[6px]"
+            <EffectPreview
+              glyphs={preview.flatMap(({ glyph }) => (glyph ? [glyph] : []))}
+              brush={brush}
+              effects={style.effects}
+              active={active}
+              className="mt-[24px]"
             >
-              {preview.map(({ text, glyph }, index) => (
-                <div
-                  key={index}
-                  role="img"
-                  aria-label={glyph ? text : `${text}（缺字）`}
-                  className={`h-[100px] w-[100px] shrink-0 rounded-[3px] border border-solid [&_svg]:h-full [&_svg]:w-full compact:h-[80px] compact:w-[80px] ${glyph ? (showGrid ? "border-[#c3cdbb] bg-[#fcfdf9]" : "border-transparent bg-transparent") : "border-2 border-[#b2c0a8] bg-[#edf1e6]"}`}
-                >
-                  {glyph && <GlyphPreview glyph={glyph} brush={brush} />}
-                </div>
-              ))}
-            </div>
+              <div
+                role="group"
+                aria-label="句子预览"
+                className="flex flex-wrap gap-[6px]"
+              >
+                {preview.map(({ text, glyph }, index) => (
+                  <div
+                    key={index}
+                    data-effect-glyph={glyph?.id}
+                    role="img"
+                    aria-label={glyph ? text : `${text}（缺字）`}
+                    className={`h-[100px] w-[100px] shrink-0 rounded-[3px] border border-solid [&_svg]:h-full [&_svg]:w-full compact:h-[80px] compact:w-[80px] ${glyph ? (showGrid ? "border-[#c3cdbb] bg-transparent" : "border-transparent bg-transparent") : "border-2 border-[#b2c0a8] bg-[#edf1e6]"}`}
+                  >
+                    {glyph && (
+                      <GlyphPreview
+                        glyph={glyph}
+                        brush={brush}
+                        color={style.color}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </EffectPreview>
           )}
         </section>
         <section
@@ -123,7 +146,7 @@ export function GlyphLibrary({ onEdit, openGlyphContextMenu }: Props) {
               className="flex min-w-0 flex-col items-center gap-[12px] rounded-[9px] border border-solid border-[#e4e8dc] bg-[#fcfdf9] px-[12px] pb-[14px] pt-[16px] hover:border-[#cddbb9] hover:bg-[#edf2e3]"
             >
               <span className="block aspect-square w-full max-w-[120px] [&_svg]:h-full [&_svg]:w-full">
-                <GlyphPreview glyph={glyph} brush={brush} />
+                <GlyphPreview glyph={glyph} brush={brush} color={style.color} />
               </span>
               {(glyph.name || glyph.description) && (
                 <span className="flex w-full min-w-0 flex-col gap-[5px] text-center">
