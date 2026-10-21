@@ -10,6 +10,7 @@ import { demoProject } from "../src/core/demo";
 import { createProjectPatch } from "../src/core/projectPatch";
 import { ProjectStorage } from "../src/features/project/projectStorage";
 import { defaultImportSettings } from "../src/core/importSettings";
+import { defaultProjectStyle } from "../src/core/glyphEffects";
 
 async function fixture(t: TestContext) {
   const root = await mkdtemp(join(tmpdir(), "coinage-test-"));
@@ -165,9 +166,43 @@ test("invalid input and corrupt files never replace existing disk data", async (
   assert.equal((await put({ version: 9 }, null)).status, 400);
   await mkdir(dataDir);
   await writeFile(join(dataDir, "project.json"), "broken");
-  assert.equal((await get()).status, 500);
+  const response = await get();
+  assert.equal(response.status, 500);
+  assert.match((await response.json()).error, /格式损坏/);
   assert.equal((await put(demoProject(), null)).status, 500);
   assert.equal(await readFile(join(dataDir, "project.json"), "utf8"), "broken");
+});
+
+test("readable JSON with unsupported settings or broken references reports validation failure and preserves disk data", async (t) => {
+  const { dataDir, get, put } = await fixture(t);
+  await mkdir(dataDir);
+  const backup = JSON.stringify(demoProject());
+  await writeFile(join(dataDir, "project.backup.json"), backup);
+  const unsupported = demoProject();
+  unsupported.style = structuredClone(defaultProjectStyle);
+  (unsupported.style.effects.fire as Record<string, unknown>).palette =
+    "landscape";
+  const broken = demoProject();
+  broken.glyphs[0].strokes[0].nodes.push("missing-node");
+  for (const [project, reason] of [
+    [unsupported, /火焰配色不受支持.*style\.effects\.fire\.palette/],
+    [broken, /节点引用不符合当前格式/],
+  ] as const) {
+    const text = JSON.stringify(project);
+    await writeFile(join(dataDir, "project.json"), text);
+    const response = await get();
+    assert.equal(response.status, 500);
+    const { error } = await response.json();
+    assert.match(error, /未通过校验/);
+    assert.match(error, reason);
+    assert.doesNotMatch(error, /格式损坏/);
+    assert.equal((await put(demoProject(), null)).status, 500);
+    assert.equal(await readFile(join(dataDir, "project.json"), "utf8"), text);
+    assert.equal(
+      await readFile(join(dataDir, "project.backup.json"), "utf8"),
+      backup,
+    );
+  }
 });
 
 test("server serves bundled assets but rejects cross-site API access and private paths", async (t) => {

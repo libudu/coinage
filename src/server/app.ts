@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, isAbsolute, join, relative, resolve } from "node:path";
 import { isProject } from "../core/validation";
+import { firePalettes } from "../core/glyphEffects";
 import { applyProjectPatch, isProjectPatch } from "../core/projectPatch";
 import {
   defaultImportSettings,
@@ -95,10 +96,20 @@ export function createApp(options: { dataDir: string; clientDir?: string }) {
         "本地手稿格式损坏，请检查 data/project.json 或恢复 project.backup.json",
       );
     }
-    if (!isProject(project))
+    if (!isProject(project)) {
+      const palette = (
+        project as {
+          style?: { effects?: { fire?: { palette?: unknown } } };
+        } | null
+      )?.style?.effects?.fire?.palette;
+      const reason =
+        typeof palette === "string" && !Object.hasOwn(firePalettes, palette)
+          ? "火焰配色不受支持（style.effects.fire.palette）"
+          : "字段、数值范围或节点引用不符合当前格式";
       throw new Error(
-        "本地手稿格式损坏，请检查 data/project.json 或恢复 project.backup.json",
+        `本地手稿数据未通过校验：${reason}。请检查 data/project.json 或恢复 project.backup.json`,
       );
+    }
     return {
       project,
       revision: createHash("sha256").update(text).digest("hex"),
