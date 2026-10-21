@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   defaultGlyphEffects,
+  defaultInkSettings,
   defaultProjectStyle,
   isGlyphEffects,
   isProjectStyle,
@@ -156,7 +157,7 @@ test("separate strokes restart flame height at their own roots and empty masks s
 
 test("effects reject invalid palettes, colors, non-finite and out-of-range parameters", () => {
   assert.equal(isGlyphEffects(defaultGlyphEffects), true);
-  for (const type of ["none", "fire", "rune"]) {
+  for (const type of ["none", "fire", "rune", "ink"]) {
     assert.equal(isGlyphEffects({ ...defaultGlyphEffects, type }), true);
   }
   for (const value of [
@@ -189,6 +190,113 @@ test("effects reject invalid palettes, colors, non-finite and out-of-range param
           `${effect}.${key}=${value}`,
         );
       }
+});
+
+test("ink defaults, ranges and field patches preserve geometry, other effects and plain exports", () => {
+  const before = demoProject();
+  before.style = structuredClone(defaultProjectStyle);
+  const next = structuredClone(before);
+  next.style!.effects.type = "ink";
+  next.style!.effects.ink = { ...defaultInkSettings, disturbance: 80 };
+  assert.equal(isProject(next), true);
+  const patch = createProjectPatch(before, next);
+  assert.deepEqual(applyProjectPatch(before, patch), next);
+  assert.ok(patch.every((operation) => operation.path[0] === "style"));
+  assert.deepEqual(next.glyphs, before.glyphs);
+  assert.deepEqual(next.style!.effects.fire, before.style!.effects.fire);
+  assert.deepEqual(next.style!.effects.rune, before.style!.effects.rune);
+  assert.equal(
+    exportSvg(next.glyphs[0], next.brush, next.style!.color),
+    exportSvg(before.glyphs[0], before.brush, before.style!.color),
+  );
+  for (const [key, min, max] of [
+    ["intensity", 20, 100],
+    ["speed", 20, 160],
+    ["disturbance", 0, 100],
+  ] as const) {
+    for (const value of [min, max]) {
+      const effects = {
+        ...defaultGlyphEffects,
+        type: "ink",
+        ink: { ...defaultInkSettings, [key]: value },
+      };
+      assert.equal(isGlyphEffects(effects), true);
+    }
+    for (const value of [min - 1, max + 1, NaN, Infinity, "50", undefined]) {
+      const effects = {
+        ...defaultGlyphEffects,
+        ink: { ...defaultInkSettings, [key]: value },
+      };
+      assert.equal(isGlyphEffects(effects), false);
+    }
+  }
+  assert.equal(isGlyphEffects({ ...defaultGlyphEffects, ink: null }), false);
+});
+
+test("ink stir size validates its bounds and saves independently of intensity and force", () => {
+  assert.equal(defaultInkSettings.stirSize, 100);
+  for (const stirSize of [undefined, 25, 100, 200])
+    assert.equal(
+      isGlyphEffects({
+        ...defaultGlyphEffects,
+        ink: { ...defaultInkSettings, stirSize },
+      }),
+      true,
+    );
+  for (const stirSize of [0, 24, 201, NaN, Infinity, "100", null])
+    assert.equal(
+      isGlyphEffects({
+        ...defaultGlyphEffects,
+        ink: { ...defaultInkSettings, stirSize },
+      }),
+      false,
+    );
+  const before = demoProject();
+  before.style = structuredClone(defaultProjectStyle);
+  before.style.effects.ink = { ...defaultInkSettings };
+  before.style.effects.type = "ink";
+  const next = structuredClone(before);
+  next.style!.effects.ink!.stirSize = 150;
+  const patch = createProjectPatch(before, next);
+  assert.deepEqual(patch, [
+    { op: "set", path: ["style", "effects", "ink", "stirSize"], value: 150 },
+  ]);
+  assert.deepEqual(applyProjectPatch(before, patch), next);
+});
+
+test("ink diffusion range defaults, validates and persists as an independent field", () => {
+  assert.equal(defaultInkSettings.diffusionRange, 100);
+  for (const diffusionRange of [undefined, 0, 50, 100, 200])
+    assert.equal(
+      isGlyphEffects({
+        ...defaultGlyphEffects,
+        ink: { ...defaultInkSettings, diffusionRange },
+      }),
+      true,
+    );
+  for (const diffusionRange of [-1, 201, NaN, Infinity, "100", null])
+    assert.equal(
+      isGlyphEffects({
+        ...defaultGlyphEffects,
+        ink: { ...defaultInkSettings, diffusionRange },
+      }),
+      false,
+    );
+  const before = demoProject();
+  before.style = structuredClone(defaultProjectStyle);
+  before.style.effects.ink = { ...defaultInkSettings };
+  before.style.effects.type = "ink";
+  const next = structuredClone(before);
+  next.style!.effects.ink!.diffusionRange = 50;
+  const patch = createProjectPatch(before, next);
+  assert.deepEqual(patch, [
+    {
+      op: "set",
+      path: ["style", "effects", "ink", "diffusionRange"],
+      value: 50,
+    },
+  ]);
+  assert.deepEqual(applyProjectPatch(before, patch), next);
 });
 
 test("global effects persist in field patches without changing geometry, reference images or SVG exports", () => {
@@ -281,18 +389,19 @@ test("global styles validate direction boundaries and preserve geometry and edit
   );
   const project = demoProject();
   const store = createProjectStore(project);
-  const originalGlyphs = store.getState().project.glyphs;
   const actions = store.getState().actions;
-  const token = actions.beginTransaction();
+  actions.update((g) => {
+    Object.values(g.nodes)[0].x += 1;
+  });
+  const originalGlyphs = store.getState().project.glyphs;
   actions.changeStyle((s) => {
     s.effects.type = "fire";
     s.effects.fire.direction = 90;
     s.color = "#123456";
-  }, token);
+  });
   actions.changeStyle((s) => {
     s.effects.fire.direction = 180;
-  }, token);
-  actions.commitTransaction(token);
+  });
   assert.equal(store.getState().past.length, 1);
   assert.equal(store.getState().project.glyphs, originalGlyphs);
   assert.match(
@@ -308,17 +417,14 @@ test("global styles validate direction boundaries and preserve geometry and edit
   const activeId = store.getState().project.activeId;
   assert.equal(store.getState().project.style!.effects.fire.direction, 180);
   actions.undo();
-  assert.equal(store.getState().project.style, undefined);
+  assert.equal(store.getState().project.style!.effects.fire.direction, 180);
   assert.equal(store.getState().project.activeId, activeId);
   actions.redo();
   assert.equal(store.getState().project.style!.effects.fire.direction, 180);
   const stale = actions.beginTransaction();
   actions.changeStyle((s) => {
     s.effects.rune.direction = 270;
-  }, stale);
+  });
   actions.cancelTransaction(stale);
-  actions.changeStyle((s) => {
-    s.effects.rune.direction = 360;
-  }, stale);
-  assert.equal(store.getState().project.style!.effects.rune.direction, 0);
+  assert.equal(store.getState().project.style!.effects.rune.direction, 270);
 });

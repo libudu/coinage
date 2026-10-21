@@ -10,13 +10,18 @@ import {
 import { GlowFilter } from "pixi-filters/glow";
 import type { BrushDefaults } from "../../core/brush";
 import { glyphPath } from "../../core/geometry";
-import { defaultGlyphEffects, firePalettes } from "../../core/glyphEffects";
+import {
+  defaultGlyphEffects,
+  defaultInkSettings,
+  firePalettes,
+} from "../../core/glyphEffects";
 import type { GlyphEffects } from "../../core/glyphEffects";
 import type { Glyph } from "../../core/model";
 import { effectFragment, effectVertex } from "./effectShaders";
 import { buildFlameField, flameFieldScale, flameFieldSize } from "./flameField";
 import { createEffectPointer } from "./effectInteraction";
 import { createFireAirflow, fireGustCount } from "./fireEffect";
+import { createInkFlow, inkFieldSize } from "./inkEffect";
 import {
   hitRune,
   runeMaterials,
@@ -48,7 +53,33 @@ type Entry = {
   tilt: number[];
   airflow: ReturnType<typeof createFireAirflow>;
   ripples: RuneRipple[];
+  ink: ReturnType<typeof createInkTexture> | null;
 };
+
+function createInkTexture(mask: HTMLCanvasElement) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = inkFieldSize;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("无法创建水墨纹理");
+  context.drawImage(mask, 0, 0, inkFieldSize, inkFieldSize);
+  const image = context.getImageData(0, 0, inkFieldSize, inkFieldSize);
+  const source = new Float32Array(inkFieldSize * inkFieldSize);
+  for (let i = 0; i < source.length; i++)
+    source[i] = image.data[i * 4 + 3] / 255;
+  const flow = createInkFlow(source);
+  image.data.set(flow.pixels);
+  context.putImageData(image, 0, 0);
+  const texture = Texture.from(canvas);
+  return {
+    flow,
+    texture,
+    upload() {
+      image.data.set(flow.pixels);
+      context.putImageData(image, 0, 0);
+      texture.source.update();
+    },
+  };
+}
 
 function createMask(path: string) {
   const canvas = document.createElement("canvas");
@@ -124,6 +155,15 @@ export async function createEffectScene(host: HTMLElement) {
       const uniforms = entry.filter.resources.effectUniforms.uniforms;
       const frame = pointer.frame(entry.bounds, now);
       if (effects.type === "fire") entry.airflow.update(frame.pointer, delta);
+      if (
+        effects.type === "ink" &&
+        entry.ink?.flow.update(
+          frame.pointer,
+          delta,
+          effects.ink ?? defaultInkSettings,
+        )
+      )
+        entry.ink.upload();
       const smoothing = 1 - Math.exp(-delta / 0.1);
       const tilt = runePointerTilt(frame.pointer);
       for (let i = 0; i < 2; i++)
@@ -141,6 +181,10 @@ export async function createEffectScene(host: HTMLElement) {
       entry.tilt.fill(0);
       entry.airflow.reset();
       entry.ripples = [];
+      if (entry.ink) {
+        entry.ink.flow.reset();
+        entry.ink.upload();
+      }
     }
     updateInteraction(0);
   };
@@ -188,6 +232,7 @@ export async function createEffectScene(host: HTMLElement) {
     entry.container.destroy({ children: true });
     entry.filter.destroy();
     entry.glow.destroy();
+    entry.ink?.texture.destroy(true);
     if (--entry.textures.references === 0) {
       entry.textures.mask.destroy(true);
       entry.textures.flame?.destroy(true);
@@ -246,6 +291,7 @@ export async function createEffectScene(host: HTMLElement) {
           resources: {
             uMask: glyphTexture.mask.source,
             uFlame: Texture.EMPTY.source,
+            uInk: Texture.EMPTY.source,
             effectUniforms: {
               uTime: { value: time, type: "f32" },
               uKind: { value: 1, type: "f32" },
@@ -299,14 +345,30 @@ export async function createEffectScene(host: HTMLElement) {
           tilt: [0, 0],
           airflow,
           ripples: [],
+          ink: null,
         };
         entries.set(element, entry);
       }
       retained.add(element);
       const effect = effects;
       const fire = effect.type === "fire";
-      const settings = fire ? effect.fire : effect.rune;
-      const direction = settings.direction % 360;
+      const ink = effect.type === "ink";
+      const settings = fire
+        ? effect.fire
+        : ink
+          ? (effect.ink ?? defaultInkSettings)
+          : effect.rune;
+      const direction =
+        ("direction" in settings ? settings.direction : 0) % 360;
+      if (ink && !entry.ink)
+        entry.ink = createInkTexture(entry.textures.canvas);
+      entry.filter.resources.uInk =
+        entry.ink && ink ? entry.ink.texture.source : Texture.EMPTY.source;
+      if (!ink && entry.ink) {
+        entry.ink.texture.destroy(true);
+        entry.ink = null;
+      }
+      entry.container.filters = ink ? [] : [entry.glow];
       if (
         fire &&
         (!entry.textures.flame || entry.textures.direction !== direction)
@@ -323,7 +385,7 @@ export async function createEffectScene(host: HTMLElement) {
       const color = fire ? palette.warm : effect.rune.color;
       const material = runeMaterials[effect.rune.material ?? "light"];
       const uniforms = entry.filter.resources.effectUniforms.uniforms;
-      uniforms.uKind = fire ? 1 : 2;
+      uniforms.uKind = fire ? 1 : ink ? 3 : 2;
       uniforms.uIntensity = settings.intensity / 100;
       uniforms.uSpeed = settings.speed / 100;
       uniforms.uDisturbance = effect.fire.disturbance / 100;

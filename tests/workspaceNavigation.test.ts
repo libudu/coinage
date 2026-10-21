@@ -724,7 +724,141 @@ test("appearance controls update global color and save while editor shortcuts st
   );
 });
 
-test("effects preserve separate parameters, save slider transactions and appear only in style and sentence previews", async (t) => {
+test("style controls and their focused undo keys preserve editor redo and keep the latest saved style", async (t) => {
+  const { container, saved, project } = await render(t);
+  await click(button(container, "编辑 甲"));
+  await key("a", true);
+  await key("ArrowRight");
+  await key("s", true);
+  const edited = saved.at(-1)!.glyphs;
+  assert.notDeepEqual(edited, project.glyphs);
+  await key("z", true);
+  await click(button(container, "样式"));
+  const page = container.querySelector<HTMLElement>('main[aria-label="样式"]')!;
+  await click(button(page, "使用颜色 #4562a6"));
+  await click(button(page, "燃烧"));
+  await click(button(page, "幽蓝"));
+  const range = page.querySelector<HTMLInputElement>(
+    'input[aria-label="火势"]',
+  )!;
+  const number = page.querySelector<HTMLInputElement>(
+    'input[type="number"][aria-label="火焰方向"]',
+  )!;
+  await inputValue(range, "90");
+  await inputValue(number, "135");
+  await key("s", true);
+  const expectedStyle = saved.at(-1)!.style;
+  assert.equal(expectedStyle!.effects.fire.intensity, 90);
+  assert.equal(expectedStyle!.effects.fire.direction, 135);
+  for (const input of [range, number]) {
+    await act(async () => {
+      input.focus();
+      input.dispatchEvent(
+        new dom.window.KeyboardEvent("keydown", {
+          key: "z",
+          ctrlKey: true,
+          bubbles: true,
+        }),
+      );
+      input.blur();
+    });
+  }
+  await key("s", true);
+  assert.deepEqual(saved.at(-1)!.style, expectedStyle);
+  assert.deepEqual(saved.at(-1)!.glyphs, project.glyphs);
+  await click(button(container, "造字"));
+  await key("y", true);
+  await key("s", true);
+  assert.deepEqual(saved.at(-1)!.glyphs, edited);
+  assert.deepEqual(saved.at(-1)!.style, expectedStyle);
+  await key("z", true);
+  await key("s", true);
+  assert.deepEqual(saved.at(-1)!.glyphs, project.glyphs);
+  assert.deepEqual(saved.at(-1)!.style, expectedStyle);
+});
+
+test("ink controls save independent settings, retain them across switches and use the sentence preview", async (t) => {
+  const { container, saved, project } = await render(t);
+  await click(button(container, "样式"));
+  const stylePage = container.querySelector<HTMLElement>(
+    'main[aria-label="样式"]',
+  )!;
+  await click(button(stylePage, "水墨"));
+  assert.equal(button(stylePage, "水墨").getAttribute("aria-pressed"), "true");
+  assert.equal(stylePage.querySelector('input[aria-label="流光方向"]'), null);
+  assert.equal(stylePage.querySelector('input[aria-label="符文光色"]'), null);
+  const stirSize = stylePage.querySelector<HTMLInputElement>(
+    'input[aria-label="搅动大小"]',
+  )!;
+  assert.equal(stirSize.value, "100");
+  assert.equal(stirSize.min, "25");
+  assert.equal(stirSize.max, "200");
+  const diffusionRange = stylePage.querySelector<HTMLInputElement>(
+    'input[aria-label="扩散范围"]',
+  )!;
+  assert.equal(diffusionRange.value, "100");
+  assert.equal(diffusionRange.min, "0");
+  assert.equal(diffusionRange.max, "200");
+  for (const [label, value] of [
+    ["晕染浓度", "90"],
+    ["水流速度", "85"],
+    ["搅动强度", "0"],
+    ["搅动大小", "150"],
+    ["扩散范围", "50"],
+  ]) {
+    const slider = stylePage.querySelector<HTMLInputElement>(
+      `input[aria-label="${label}"]`,
+    )!;
+    assert.ok(slider);
+    await act(async () => slider.focus());
+    await inputValue(slider, value);
+    await act(async () => slider.blur());
+  }
+  await key("s", true);
+  assert.equal(saved.at(-1)!.style!.effects.type, "ink");
+  assert.deepEqual(saved.at(-1)!.style!.effects.ink, {
+    intensity: 90,
+    speed: 85,
+    disturbance: 0,
+    stirSize: 150,
+    diffusionRange: 50,
+  });
+  assert.equal(isProject(saved.at(-1)), true);
+  await click(button(stylePage, "燃烧"));
+  await click(button(stylePage, "符文"));
+  await click(button(stylePage, "水墨"));
+  assert.equal(
+    stylePage.querySelector<HTMLInputElement>('input[aria-label="扩散范围"]')!
+      .value,
+    "50",
+  );
+  assert.equal(
+    stylePage.querySelector<HTMLInputElement>('input[aria-label="搅动大小"]')!
+      .value,
+    "150",
+  );
+  assert.equal(
+    stylePage.querySelector<HTMLInputElement>('input[aria-label="晕染浓度"]')!
+      .value,
+    "90",
+  );
+  assert.equal(
+    stylePage.querySelector<HTMLInputElement>('input[aria-label="搅动强度"]')!
+      .value,
+    "0",
+  );
+  await click(button(container, "字库"));
+  await inputValue(library(container).querySelector("input")!, "甲乙甲");
+  const sentence = library(container).querySelector('[aria-label="句子预览"]')!;
+  assert.equal(
+    sentence.querySelectorAll(`[data-effect-glyph="${project.glyphs[0].id}"]`)
+      .length,
+    2,
+  );
+  assert.deepEqual(saved.at(-1)!.glyphs, project.glyphs);
+});
+
+test("effects preserve separate parameters, save configuration and appear only in style and sentence previews", async (t) => {
   const { container, project, saved } = await render(t);
   await click(button(container, "编辑 乙"));
   await click(button(container, "样式"));

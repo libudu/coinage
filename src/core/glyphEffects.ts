@@ -1,5 +1,6 @@
 export type GlyphEffects = {
-  type: "none" | "fire" | "rune";
+  type: "none" | "fire" | "rune" | "ink";
+  ink?: InkSettings;
   fire: {
     palette: "ember" | "azure" | "jade" | "ashen";
     intensity: number;
@@ -16,6 +17,22 @@ export type GlyphEffects = {
     haloWidth: number;
   };
 };
+
+export type InkSettings = {
+  intensity: number;
+  speed: number;
+  disturbance: number;
+  stirSize?: number;
+  diffusionRange?: number;
+};
+
+export const defaultInkSettings = {
+  intensity: 75,
+  speed: 60,
+  disturbance: 65,
+  stirSize: 100,
+  diffusionRange: 100,
+} satisfies InkSettings;
 
 export const defaultGlyphEffects: GlyphEffects = {
   type: "none",
@@ -83,7 +100,16 @@ export function isGlyphEffects(value: unknown): value is GlyphEffects {
     amount >= min &&
     amount <= max;
   return (
-    ["none", "fire", "rune"].includes(effect.type) &&
+    ["none", "fire", "rune", "ink"].includes(effect.type) &&
+    (effect.ink === undefined ||
+      (!!effect.ink &&
+        validAmount(effect.ink.intensity, 20, 100) &&
+        validAmount(effect.ink.speed, 20, 160) &&
+        validAmount(effect.ink.disturbance, 0, 100) &&
+        (effect.ink.stirSize === undefined ||
+          validAmount(effect.ink.stirSize, 25, 200)) &&
+        (effect.ink.diffusionRange === undefined ||
+          validAmount(effect.ink.diffusionRange, 0, 200)))) &&
     !!effect.fire &&
     typeof effect.fire.palette === "string" &&
     Object.hasOwn(firePalettes, effect.fire.palette) &&

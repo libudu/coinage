@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createEffectPointer } from "../src/features/styles/effectInteraction";
+import { defaultInkSettings } from "../src/core/glyphEffects";
+import {
+  createInkFlow,
+  inkPointerRadius,
+} from "../src/features/styles/inkEffect";
 import {
   createFireAirflow,
   fireGustCount,
@@ -17,6 +22,220 @@ import {
 } from "../src/features/styles/runeEffect";
 
 const bounds = { x: 100, y: 200, size: 200 };
+
+function inkFixture() {
+  const size = 64;
+  const mask = new Float32Array(size * size);
+  for (let y = 14; y < 50; y++)
+    for (let x = 26; x < 38; x++) mask[y * size + x] = 1;
+  return { size, mask, flow: createInkFlow(mask, size) };
+}
+
+test("ink bleeds outside strokes, rapidly fades to empty space and stays at equilibrium without stirring", () => {
+  const { size, flow } = inkFixture();
+  const at = (x: number) => flow.rest[32 * size + x];
+  assert.ok(at(32) > 0.99);
+  assert.ok(at(25) > at(24) && at(24) > 0);
+  assert.ok(at(20) < 1 / 255);
+  assert.equal(at(0), 0);
+  assert.equal(flow.update([0.5, 0.5, 0, 0], 0.05, defaultInkSettings), false);
+  assert.deepEqual(flow.density, flow.rest);
+  const empty = createInkFlow(new Float32Array(size * size), size);
+  for (let i = 0; i < 15; i++)
+    empty.update([0.5, 0.5, 2, 1], 0.025, defaultInkSettings);
+  assert.ok(empty.density.every((value) => value === 0));
+});
+
+test("stirring carries ink outside the glyph and clear water inside, retains a wake, then restores the source", () => {
+  const { size, mask, flow } = inkFixture();
+  flow.update([0.25, 0.5, 1.4, 0], 0, defaultInkSettings);
+  for (let i = 1; i <= 20; i++)
+    flow.update([0.25 + i * 0.025, 0.5, 1.4, 0], 0.025, defaultInkSettings);
+  const deficit = () =>
+    flow.density.reduce(
+      (sum, value, i) =>
+        sum + (mask[i] ? Math.max(0, flow.rest[i] - value) : 0),
+      0,
+    );
+  const displaced = flow.density.reduce(
+    (sum, value, i) => sum + (!mask[i] ? Math.max(0, value - flow.rest[i]) : 0),
+    0,
+  );
+  const disturbed = deficit();
+  assert.ok(disturbed > 3, `clear flow should enter the stroke: ${disturbed}`);
+  assert.ok(displaced > 1, `ink should leave the stroke: ${displaced}`);
+  const atRelease = Float32Array.from(flow.density);
+  flow.update([-10, -10, 0, 0], 0.1, defaultInkSettings);
+  assert.notDeepEqual(flow.density, atRelease);
+  assert.ok(deficit() > 1);
+  for (let i = 0; i < 240; i++)
+    flow.update([-10, -10, 0, 0], 0.025, defaultInkSettings);
+  assert.ok(deficit() < disturbed * 0.02);
+  assert.ok(
+    flow.density.every(
+      (value) => Number.isFinite(value) && value >= 0 && value <= 1,
+    ),
+  );
+  for (let i = 0; i < size; i++) {
+    assert.equal(flow.density[i], 0);
+    assert.equal(flow.density[(size - 1) * size + i], 0);
+  }
+});
+
+test("resting ink keeps a narrow transition around the source without a broad wash", () => {
+  const size = 192;
+  const mask = new Float32Array(size * size);
+  for (let y = 50; y < 140; y++)
+    for (let x = 90; x < 102; x++) mask[y * size + x] = 1;
+  const flow = createInkFlow(mask, size);
+  const at = (x: number) => flow.density[96 * size + x];
+  assert.ok(at(90) > 0.78, "the inside of the edge should remain dense");
+  assert.ok(at(89) > 0, "some natural diffusion should remain outside");
+  assert.ok(at(88) < 0.06, "ink should fall off within two grid cells");
+  assert.ok(at(87) < 0.015, "the distant wash should be almost transparent");
+});
+
+test("diffusion range updates resting contours immediately while every range remains stirrable", () => {
+  const widths: number[] = [];
+  for (const diffusionRange of [0, 50, 100, 200]) {
+    const { size, mask, flow } = inkFixture();
+    const settings = { ...defaultInkSettings, diffusionRange };
+    flow.update([-10, -10, 0, 0], 0, settings);
+    assert.deepEqual(flow.density, flow.rest);
+    widths.push(flow.rest[32 * size + 25]);
+    if (diffusionRange === 0) assert.deepEqual(flow.rest, mask);
+    flow.update([0.25, 0.5, 1.4, 0], 0, settings);
+    for (let i = 1; i <= 20; i++)
+      flow.update([0.25 + i * 0.025, 0.5, 1.4, 0], 0.025, settings);
+    assert.ok(
+      flow.density.some((value, i) => mask[i] && value < flow.rest[i] - 0.08),
+      `flow should open the stroke at ${diffusionRange}%`,
+    );
+    assert.ok(
+      flow.density.some((value, i) => !mask[i] && value > flow.rest[i] + 0.01),
+    );
+    const displaced = Float32Array.from(flow.density);
+    flow.update([-10, -10, 0, 0], 0, {
+      ...settings,
+      diffusionRange: diffusionRange === 0 ? 200 : 0,
+    });
+    assert.deepEqual(
+      flow.density,
+      displaced,
+      "changing diffusion must preserve ink already in motion",
+    );
+    flow.reset();
+    assert.deepEqual(flow.density, flow.rest);
+    assert.ok(
+      flow.pixels.every(
+        (value, i) =>
+          i % 4 === 3 ||
+          value === Math.round(flow.density[Math.floor(i / 4)] * 255),
+      ),
+    );
+  }
+  assert.equal(widths[0], 0);
+  assert.ok(
+    widths[1] > widths[0] && widths[2] > widths[1] && widths[3] > widths[2],
+  );
+});
+
+test("stir size changes the affected water area and omission keeps the default radius", () => {
+  const size = 96;
+  const mask = new Float32Array(size * size);
+  for (let y = 20; y < 76; y++)
+    for (let x = 36; x < 60; x++) mask[y * size + x] = 1;
+  const simulate = (stirSize: number | undefined) => {
+    const flow = createInkFlow(mask, size);
+    for (let i = 0; i < 12; i++)
+      flow.update([0.375 + i * 0.005, 0.5, 1, 0], 0.025, {
+        ...defaultInkSettings,
+        stirSize,
+      });
+    return flow;
+  };
+  const small = simulate(50),
+    large = simulate(200);
+  const affected = (flow: typeof small) =>
+    flow.density.reduce(
+      (sum, value, i) => sum + (Math.abs(value - flow.rest[i]) > 0.01 ? 1 : 0),
+      0,
+    );
+  assert.ok(affected(small) > 0);
+  assert.ok(affected(large) > affected(small) * 4);
+  assert.deepEqual(simulate(undefined).density, simulate(100).density);
+});
+
+test("ink instances stir independently, zero strength disables injection and reset clears every pending flow", () => {
+  const { mask, size, flow } = inkFixture();
+  const other = createInkFlow(mask, size);
+  for (let i = 0; i < 10; i++)
+    flow.update([0.5, 0.5, 2, -1], 0.025, defaultInkSettings);
+  assert.notDeepEqual(flow.density, flow.rest);
+  assert.deepEqual(other.density, other.rest);
+  const disabled = { ...defaultInkSettings, disturbance: 0 };
+  assert.equal(other.update([0.5, 0.5, 2, -1], 0.025, disabled), false);
+  other.reset();
+  assert.equal(other.update([5, 5, 2, -1], 0.025, defaultInkSettings), false);
+  flow.reset();
+  assert.deepEqual(flow.density, flow.rest);
+  assert.equal(flow.update([0.5, 0.5, 0, 0], 0.025, defaultInkSettings), false);
+  assert.deepEqual(flow.density, flow.rest);
+  assert.deepEqual(flow.pixels, other.pixels);
+});
+
+test("ink is supplied only by the glyph source and vanishes rapidly without a source", () => {
+  const { flow, size } = inkFixture();
+  flow.density.fill(0);
+  flow.update([0.5, 0.5, 1, 0], 0, defaultInkSettings);
+  flow.update([-10, -10, 0, 0], 0.025, defaultInkSettings);
+  const center = 32 * size + 32;
+  assert.ok(flow.density[center] > 0 && flow.density[center] < 0.1);
+  for (let i = 0; i < 100; i++)
+    flow.update([-10, -10, 0, 0], 0.025, defaultInkSettings);
+  assert.ok(flow.density[center] > flow.rest[center] * 0.99);
+  const empty = createInkFlow(new Float32Array(size * size), size);
+  empty.density.fill(1);
+  empty.update([0.5, 0.5, 1, 0], 0, defaultInkSettings);
+  for (let i = 0; i < 40; i++)
+    empty.update([-10, -10, 0, 0], 0.025, defaultInkSettings);
+  assert.ok(Math.abs(empty.density[center] - Math.exp(-2.8 * 0.8)) < 1e-5);
+});
+
+test("the half-sized pointer stirs velocity without coloring or diluting uniform ink", () => {
+  assert.equal(inkPointerRadius, 0.095 / 2);
+  const size = 64;
+  const source = new Float32Array(size * size).fill(1);
+  const stirred = createInkFlow(source, size);
+  const still = createInkFlow(source, size);
+  stirred.density.fill(0.5);
+  still.density.fill(0.5);
+  for (const flow of [stirred, still])
+    flow.update([0.5, 0.5, 1, 0], 0, defaultInkSettings);
+  for (let i = 0; i < 8; i++) {
+    stirred.update([0.5, 0.5, 1, 0], 0.025, defaultInkSettings);
+    still.update([-10, -10, 0, 0], 0.025, defaultInkSettings);
+  }
+  for (let y = 28; y <= 36; y++)
+    for (let x = 28; x <= 36; x++) {
+      const i = y * size + x;
+      assert.ok(Math.abs(stirred.density[i] - still.density[i]) < 1e-5);
+    }
+});
+
+test("ink advection and replenishment follow elapsed time across frame rates", () => {
+  const run = (dt: number) => {
+    const { flow } = inkFixture();
+    for (let i = 0; i < Math.round(0.4 / dt); i++)
+      flow.update([0.5, 0.5, 1, 0], dt, defaultInkSettings);
+    for (let i = 0; i < Math.round(1 / dt); i++)
+      flow.update([-10, -10, 0, 0], dt, defaultInkSettings);
+    return flow.density;
+  };
+  const slow = run(0.05),
+    fast = run(0.0125);
+  assert.ok(slow.every((value, i) => Math.abs(value - fast[i]) < 1e-6));
+});
 
 test("fire airflow leaves a drifting, spreading wake that decays after the pointer has left", () => {
   const air = createFireAirflow();

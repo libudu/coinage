@@ -1,4 +1,5 @@
 import { fireUniforms, fireSampling, fireFragment } from "./fireEffect";
+import { inkUniforms, inkFragment } from "./inkEffect";
 import {
   runeUniforms,
   runeProjection,
@@ -37,6 +38,7 @@ uniform vec3 uWarm;
 uniform vec3 uHot;
 ${fireUniforms}
 ${runeUniforms}
+${inkUniforms}
 
 float hash(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -64,7 +66,7 @@ ${fireSampling}
 ${runeProjection}
 ${runeSurface}
 void main() {
-  vec2 uv = uKind < 1.5 ? vUv : runeUv(vUv);
+  vec2 uv = uKind > 1.5 && uKind < 2.5 ? runeUv(vUv) : vUv;
   float t = uTime * uSpeed + uSeed;
   vec2 across = vec2(cos(uAngle), sin(uAngle));
   vec2 down = vec2(-sin(uAngle), cos(uAngle));
@@ -75,8 +77,10 @@ void main() {
   float alpha;
   if (uKind < 1.5) {
 ${fireFragment}
-  } else {
+  } else if (uKind < 2.5) {
 ${runeFragment}
+  } else {
+${inkFragment}
   }
   finalColor = vec4(color * alpha, alpha);
 }`;

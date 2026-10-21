@@ -1,4 +1,8 @@
-import { defaultProjectStyle } from "../../core/glyphEffects";
+import {
+  defaultGlyphEffects,
+  defaultInkSettings,
+  defaultProjectStyle,
+} from "../../core/glyphEffects";
 import type { ProjectStyle } from "../../core/glyphEffects";
 import { freeze, produce } from "immer";
 import { createStore } from "zustand/vanilla";
@@ -67,10 +71,8 @@ export type ProjectState = {
     removeSelection: () => boolean;
     duplicateStroke: () => void;
     moveSelection: (offset: Point, transaction?: TransactionId) => void;
-    changeStyle: (
-      recipe: (style: ProjectStyle) => void,
-      transaction?: TransactionId,
-    ) => void;
+    changeStyle: (recipe: (style: ProjectStyle) => void) => void;
+    resetEffect: () => void;
     changeBrush: (
       patch: Partial<BrushDefaults>,
       transaction?: TransactionId,
@@ -122,7 +124,7 @@ function restore(snapshot: Project, current: Project): Project {
   return snapshot.activeId === activeId ? snapshot : { ...snapshot, activeId };
 }
 
-// 字符管理同步到历史快照，撤销造字编辑时保留最新的字符列表和基本信息。
+// 字符管理和样式配置同步到历史快照，撤销造字编辑时保留这些独立修改。
 // 删除字符后，去掉仅影响该字符的空历史，避免撤销按钮出现无效步骤。
 function rebaseHistory(
   history: Project[],
@@ -471,11 +473,25 @@ export function createProjectStore(initialProject: Project) {
           translateNodes(g, ids, offset);
         }, transaction);
       },
-      changeStyle(recipe, transaction) {
-        actions.update((_, project) => {
-          project.style ??= structuredClone(defaultProjectStyle);
-          recipe(project.style);
-        }, transaction);
+      changeStyle(recipe) {
+        const previous = get().project.style ?? defaultProjectStyle;
+        const style = produce(previous, recipe);
+        if (sameValue(style, previous)) return;
+        // 样式是独立配置：正常自动保存，并让全部造字历史保留同一份最新样式。
+        updateLibrary((project) => {
+          project.style = style;
+        });
+      },
+      resetEffect() {
+        const type = (get().project.style ?? defaultProjectStyle).effects.type;
+        if (type === "none") return;
+        actions.changeStyle((style) => {
+          if (type === "fire")
+            style.effects.fire = { ...defaultGlyphEffects.fire };
+          else if (type === "rune")
+            style.effects.rune = { ...defaultGlyphEffects.rune };
+          else style.effects.ink = { ...defaultInkSettings };
+        });
       },
       changeBrush(patch, transaction) {
         actions.update((_, p) => changeGlobalBrush(p, patch), transaction);

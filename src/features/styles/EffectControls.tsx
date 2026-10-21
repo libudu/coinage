@@ -1,5 +1,7 @@
 import {
   defaultProjectStyle,
+  defaultInkSettings,
+  defaultGlyphEffects,
   firePalettes,
   runePresets,
 } from "../../core/glyphEffects";
@@ -7,28 +9,62 @@ import type { GlyphEffects } from "../../core/glyphEffects";
 import { Button } from "../../shared/components/Button";
 import { Section } from "../../shared/components/controls";
 import { SegmentedControl } from "../../shared/components/SegmentedControl";
-import { TransactionalNumberField } from "../editor/TransactionalInput";
-import { TransactionalRange } from "../editor/TransactionalRange";
-import type { TransactionId } from "../project/projectStore";
+import { NumberField } from "../../shared/components/NumberField";
+import { RangeInput } from "../../shared/components/RangeInput";
 import { useProject, useProjectActions } from "../project/useProject";
 
 export function EffectControls() {
   const effects = useProject(
     (s) => (s.project.style ?? defaultProjectStyle).effects,
   );
-  const { changeStyle } = useProjectActions();
-  const change = (
-    recipe: (effects: GlyphEffects) => void,
-    transaction?: TransactionId,
-  ) => {
+  const { changeStyle, resetEffect } = useProjectActions();
+  const change = (recipe: (effects: GlyphEffects) => void) => {
     changeStyle((style) => {
+      if (style.effects.type === "ink")
+        style.effects.ink ??= { ...defaultInkSettings };
       recipe(style.effects);
-    }, transaction);
+    });
   };
   const fire = effects.type === "fire";
-  const settings = fire ? effects.fire : effects.rune;
+  const ink = effects.type === "ink";
+  const settings = fire
+    ? effects.fire
+    : ink
+      ? { ...(effects.ink ?? defaultInkSettings), direction: 0 }
+      : effects.rune;
+  const interactionLabel = fire ? "扰动强度" : ink ? "搅动强度" : "光晕粗细";
+  const interactionValue = fire
+    ? effects.fire.disturbance
+    : ink
+      ? (effects.ink ?? defaultInkSettings).disturbance
+      : effects.rune.haloWidth;
+  const defaults = fire
+    ? defaultGlyphEffects.fire
+    : ink
+      ? defaultInkSettings
+      : defaultGlyphEffects.rune;
+  const currentSettings: Record<string, unknown> = settings;
+  const isDefault = Object.entries(defaults).every(
+    ([key, value]) =>
+      (ink ? (currentSettings[key] ?? value) : currentSettings[key]) === value,
+  );
   return (
-    <Section title="特效">
+    <Section
+      title="特效"
+      trailing={
+        effects.type !== "none" && (
+          <Button
+            variant="bare"
+            className="p-0 text-[12px] text-[#748464] enabled:hover:underline"
+            aria-label="恢复当前特效默认配置"
+            disabled={isDefault}
+            onClick={resetEffect}
+          >
+            恢复默认
+          </Button>
+        )
+      }
+    >
       <SegmentedControl
         label="特效"
         value={effects.type}
@@ -41,6 +77,7 @@ export function EffectControls() {
           { value: "none", label: "无" },
           { value: "fire", label: "燃烧" },
           { value: "rune", label: "符文" },
+          { value: "ink", label: "水墨" },
         ]}
       />
       {effects.type !== "none" && (
@@ -66,7 +103,7 @@ export function EffectControls() {
                 }
               />
             </div>
-          ) : (
+          ) : !ink ? (
             <>
               <div
                 className="flex flex-wrap gap-[7px]"
@@ -115,62 +152,67 @@ export function EffectControls() {
                 />
               </label>
             </>
-          )}
-          <div className="flex flex-col gap-[10px]">
-            <div className="flex items-center justify-between gap-[12px]">
-              <span
-                aria-hidden="true"
-                className="grid h-[36px] w-[36px] place-items-center rounded-full border border-solid border-[#dfe6d4] text-[20px] text-[#657e4d]"
-              >
-                <span style={{ transform: `rotate(${settings.direction}deg)` }}>
-                  ↑
+          ) : null}
+          {!ink && (
+            <div className="flex flex-col gap-[10px]">
+              <div className="flex items-center justify-between gap-[12px]">
+                <span
+                  aria-hidden="true"
+                  className="grid h-[36px] w-[36px] place-items-center rounded-full border border-solid border-[#dfe6d4] text-[20px] text-[#657e4d]"
+                >
+                  <span
+                    style={{ transform: `rotate(${settings.direction}deg)` }}
+                  >
+                    ↑
+                  </span>
                 </span>
-              </span>
-              <div className="w-[130px]">
-                <TransactionalNumberField
-                  key={`${effects.type}:direction-number`}
-                  label={fire ? "火焰方向" : "流光方向"}
-                  value={settings.direction}
-                  min={0}
-                  max={360}
-                  suffix="°"
-                  onValueChange={(direction, transaction) =>
-                    change((e) => {
-                      e[fire ? "fire" : "rune"].direction = direction;
-                    }, transaction)
-                  }
-                />
+                <div className="w-[130px]">
+                  <NumberField
+                    key={`${effects.type}:direction-number`}
+                    label={fire ? "火焰方向" : "流光方向"}
+                    value={settings.direction}
+                    min={0}
+                    max={360}
+                    suffix="°"
+                    onValueChange={(direction) =>
+                      change((e) => {
+                        e[fire ? "fire" : "rune"].direction = direction;
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <RangeInput
+                key={`${effects.type}:direction`}
+                aria-label={fire ? "火焰方向" : "流光方向"}
+                min={0}
+                max={360}
+                value={settings.direction}
+                onChange={(event) => {
+                  const direction = event.currentTarget.valueAsNumber;
+                  change((e) => {
+                    e[fire ? "fire" : "rune"].direction = direction;
+                  });
+                }}
+              />
+              <div className="flex justify-between text-[11px] text-[#96a287]">
+                <span>0°</span>
+                <span>180°</span>
+                <span>360°</span>
               </div>
             </div>
-            <TransactionalRange
-              key={`${effects.type}:direction`}
-              aria-label={fire ? "火焰方向" : "流光方向"}
-              min={0}
-              max={360}
-              value={settings.direction}
-              onValueChange={(direction, transaction) =>
-                change((e) => {
-                  e[fire ? "fire" : "rune"].direction = direction;
-                }, transaction)
-              }
-            />
-            <div className="flex justify-between text-[11px] text-[#96a287]">
-              <span>0°</span>
-              <span>180°</span>
-              <span>360°</span>
-            </div>
-          </div>
+          )}
           {(
             [
               {
                 key: "intensity",
-                label: fire ? "火势" : "辉光强度",
+                label: fire ? "火势" : ink ? "晕染浓度" : "辉光强度",
                 min: 20,
                 max: 100,
               },
               {
                 key: "speed",
-                label: fire ? "燃烧速度" : "流动速度",
+                label: fire ? "燃烧速度" : ink ? "水流速度" : "流动速度",
                 min: 20,
                 max: 160,
               },
@@ -184,40 +226,70 @@ export function EffectControls() {
                 {label}
                 <span className="font-mono">{settings[key]}%</span>
               </span>
-              <TransactionalRange
+              <RangeInput
                 aria-label={label}
                 min={min}
                 max={max}
                 value={settings[key]}
-                onValueChange={(value, transaction) =>
+                onChange={(event) => {
+                  const value = event.currentTarget.valueAsNumber;
                   change((e) => {
-                    e[fire ? "fire" : "rune"][key] = value;
-                  }, transaction)
-                }
+                    (ink ? e.ink! : e[fire ? "fire" : "rune"])[key] = value;
+                  });
+                }}
               />
             </label>
           ))}
           <label className="block text-[12px] text-[#77856a]">
             <span className="mb-[10px] flex justify-between">
-              {fire ? "扰动强度" : "光晕粗细"}
-              <span className="font-mono">
-                {fire ? effects.fire.disturbance : effects.rune.haloWidth}%
-              </span>
+              {interactionLabel}
+              <span className="font-mono">{interactionValue}%</span>
             </span>
-            <TransactionalRange
+            <RangeInput
               key={`${effects.type}:interaction`}
-              aria-label={fire ? "扰动强度" : "光晕粗细"}
-              min={fire ? 0 : 10}
+              aria-label={interactionLabel}
+              min={fire || ink ? 0 : 10}
               max={100}
-              value={fire ? effects.fire.disturbance : effects.rune.haloWidth}
-              onValueChange={(value, transaction) =>
+              value={interactionValue}
+              onChange={(event) => {
+                const value = event.currentTarget.valueAsNumber;
                 change((e) => {
                   if (fire) e.fire.disturbance = value;
+                  else if (ink) e.ink!.disturbance = value;
                   else e.rune.haloWidth = value;
-                }, transaction)
-              }
+                });
+              }}
             />
           </label>
+          {ink &&
+            (
+              [
+                { key: "stirSize", label: "搅动大小", min: 25 },
+                { key: "diffusionRange", label: "扩散范围", min: 0 },
+              ] as const
+            ).map(({ key, label, min }) => (
+              <label key={key} className="block text-[12px] text-[#77856a]">
+                <span className="mb-[10px] flex justify-between">
+                  {label}
+                  <span className="font-mono">
+                    {effects.ink?.[key] ?? defaultInkSettings[key]}%
+                  </span>
+                </span>
+                <RangeInput
+                  key={`ink:${key}`}
+                  aria-label={label}
+                  min={min}
+                  max={200}
+                  value={effects.ink?.[key] ?? defaultInkSettings[key]}
+                  onChange={(event) => {
+                    const value = event.currentTarget.valueAsNumber;
+                    change((e) => {
+                      e.ink![key] = value;
+                    });
+                  }}
+                />
+              </label>
+            ))}
         </div>
       )}
     </Section>

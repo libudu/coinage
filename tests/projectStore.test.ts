@@ -8,6 +8,11 @@ import { emptyGlyph, newStroke } from "../src/core/model";
 import type { Project } from "../src/core/model";
 import { isProject } from "../src/core/validation";
 import { defaultBrush } from "../src/core/brush";
+import {
+  defaultGlyphEffects,
+  defaultInkSettings,
+  defaultProjectStyle,
+} from "../src/core/glyphEffects";
 
 function manuscript(): Project {
   const glyph = emptyGlyph("甲"),
@@ -24,6 +29,130 @@ function setup() {
   const store = createProjectStore(manuscript());
   return { store, actions: store.getState().actions, state: store.getState };
 }
+
+test("resetting effect settings persists without adding editor history or invalidating redo", () => {
+  for (const type of ["fire", "rune", "ink"] as const) {
+    const project = manuscript();
+    project.style = structuredClone(defaultProjectStyle);
+    project.style.color = "#123456";
+    project.style.effects.type = type;
+    project.style.effects.fire = {
+      ...defaultGlyphEffects.fire,
+      palette: "azure",
+      direction: 90,
+    };
+    project.style.effects.rune = {
+      ...defaultGlyphEffects.rune,
+      material: "gold",
+      color: "#abcdef",
+      haloWidth: 80,
+    };
+    project.style.effects.ink = {
+      intensity: 90,
+      speed: 80,
+      disturbance: 0,
+      stirSize: 150,
+      diffusionRange: 50,
+    };
+    const store = createProjectStore(project);
+    const { actions } = store.getState();
+    actions.update((g) => {
+      g.nodes.a.x += 5;
+    });
+    actions.update((g) => {
+      g.nodes.a.y += 5;
+    });
+    actions.undo();
+    const glyphs = store.getState().project.glyphs;
+    const expected = structuredClone(project.style);
+    if (type === "fire")
+      expected.effects.fire = { ...defaultGlyphEffects.fire };
+    else if (type === "rune")
+      expected.effects.rune = { ...defaultGlyphEffects.rune };
+    else expected.effects.ink = { ...defaultInkSettings };
+    actions.resetEffect();
+    assert.deepEqual(store.getState().project.style, expected);
+    assert.equal(store.getState().committedProject, store.getState().project);
+    assert.equal(store.getState().project.glyphs, glyphs);
+    assert.equal(store.getState().past.length, 1);
+    assert.equal(store.getState().future.length, 1);
+    actions.undo();
+    assert.equal(activeGlyph(store.getState()).nodes.a.x, 100);
+    assert.deepEqual(store.getState().project.style, expected);
+    actions.redo();
+    actions.redo();
+    assert.equal(activeGlyph(store.getState()).nodes.a.x, 105);
+    assert.equal(activeGlyph(store.getState()).nodes.a.y, 105);
+    assert.deepEqual(store.getState().project.style, expected);
+    const current = store.getState().project;
+    actions.resetEffect();
+    assert.equal(store.getState().project, current);
+  }
+  const store = createProjectStore(manuscript());
+  const current = store.getState().project;
+  store.getState().actions.resetEffect();
+  assert.equal(store.getState().project, current);
+});
+
+test("all style changes persist across editor undo and redo without adding history or clearing redo", () => {
+  const { state, actions } = setup();
+  actions.update((g) => {
+    g.nodes.a.x += 5;
+  });
+  actions.update((g) => {
+    g.nodes.a.y += 5;
+  });
+  actions.undo();
+  const glyphs = state().project.glyphs;
+  for (let i = 0; i < 20; i++) {
+    actions.changeStyle((style) => {
+      style.color = "#123456";
+      style.effects.type = i % 2 === 0 ? "fire" : "rune";
+      style.effects.fire.palette = "ashen";
+      style.effects.fire.intensity = 70 + i;
+      style.effects.fire.direction = i * 10;
+      style.effects.rune.material = "gold";
+      style.effects.rune.haloWidth = 20 + i;
+      style.effects.ink = {
+        ...defaultInkSettings,
+        diffusionRange: i * 5,
+        stirSize: 100 + i,
+      };
+    });
+    assert.equal(state().past.length, 1);
+    assert.equal(state().future.length, 1);
+    assert.equal(state().project.glyphs, glyphs);
+    assert.equal(state().project, state().committedProject);
+    for (const snapshot of [...state().past, ...state().future])
+      assert.deepEqual(snapshot.style, state().project.style);
+  }
+  const style = state().project.style;
+  actions.undo();
+  assert.equal(activeGlyph(state()).nodes.a.x, 100);
+  assert.deepEqual(state().project.style, style);
+  actions.redo();
+  actions.redo();
+  assert.equal(activeGlyph(state()).nodes.a.x, 105);
+  assert.equal(activeGlyph(state()).nodes.a.y, 105);
+  assert.deepEqual(state().project.style, style);
+  const current = state().project;
+  actions.changeStyle((s) => {
+    s.color = "#123456";
+  });
+  assert.equal(state().project, current);
+  const token = actions.beginTransaction();
+  actions.update((g) => {
+    g.nodes.a.x += 2;
+  }, token);
+  actions.changeStyle((s) => {
+    s.color = "#abcdef";
+  });
+  assert.equal(state().transaction, null);
+  actions.cancelTransaction(token);
+  actions.undo();
+  assert.equal(activeGlyph(state()).nodes.a.x, 105);
+  assert.equal(state().project.style!.color, "#abcdef");
+});
 
 test("updates retain untouched branches and never mutate the caller's project or history", () => {
   const original = manuscript(),
