@@ -15,9 +15,21 @@ import type { GlyphEffects } from "../../core/glyphEffects";
 import type { Glyph } from "../../core/model";
 import { effectFragment, effectVertex } from "./effectShaders";
 import { buildFlameField, flameFieldScale, flameFieldSize } from "./flameField";
+import { createEffectPointer } from "./effectInteraction";
+import { smoothFireWind } from "./fireEffect";
+import {
+  hitRune,
+  runeRippleCount,
+  runeRippleDuration,
+  runePointerTilt,
+  writeRuneRipples,
+} from "./runeEffect";
+import type { EffectBounds } from "./effectInteraction";
+import type { RuneRipple } from "./runeEffect";
 
 type GlyphTexture = {
   canvas: HTMLCanvasElement;
+  pixels: Uint8ClampedArray;
   mask: Texture;
   flame: Texture | null;
   direction: number;
@@ -31,6 +43,10 @@ type Entry = {
   glow: GlowFilter;
   path: string;
   textures: GlyphTexture;
+  bounds: EffectBounds;
+  tilt: number[];
+  wind: number[];
+  ripples: RuneRipple[];
 };
 
 function createMask(path: string) {
@@ -44,6 +60,7 @@ function createMask(path: string) {
   context.fill(new Path2D(path));
   return {
     canvas,
+    pixels: context.getImageData(0, 0, 512, 512).data,
     mask: Texture.from(canvas),
     flame: null,
     direction: -1,
@@ -97,6 +114,61 @@ export async function createEffectScene(host: HTMLElement) {
   let time = 0;
   let inView = true;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const pointer = createEffectPointer();
+  const canInteract = () =>
+    !destroyed && !document.hidden && inView && !reducedMotion.matches;
+  const updateInteraction = (delta: number) => {
+    const now = performance.now();
+    for (const entry of entries.values()) {
+      const uniforms = entry.filter.resources.effectUniforms.uniforms;
+      const frame = pointer.frame(entry.bounds, now);
+      smoothFireWind(entry.wind, frame.pointer[2], frame.pointer[3], delta);
+      frame.pointer[2] = entry.wind[0];
+      frame.pointer[3] = entry.wind[1];
+      uniforms.uPointer = frame.pointer;
+      const smoothing = 1 - Math.exp(-delta / 0.1);
+      const tilt = runePointerTilt(frame.pointer);
+      for (let i = 0; i < 2; i++)
+        entry.tilt[i] += (tilt[i] - entry.tilt[i]) * smoothing;
+      uniforms.uTilt = entry.tilt;
+      entry.ripples = entry.ripples.filter(
+        (ripple) => time - ripple.started < runeRippleDuration,
+      );
+      writeRuneRipples(uniforms.uRipples, entry.ripples, time);
+    }
+  };
+  const resetInteraction = () => {
+    pointer.reset();
+    for (const entry of entries.values()) {
+      entry.tilt.fill(0);
+      entry.wind.fill(0);
+      entry.ripples = [];
+    }
+    updateInteraction(0);
+  };
+  const movePointer = (event: PointerEvent) => {
+    if (!canInteract() || event.pointerType === "touch") return;
+    pointer.move(event.clientX, event.clientY, performance.now());
+  };
+  const leaveWindow = (event: PointerEvent) => {
+    if (!event.relatedTarget) pointer.reset();
+  };
+  const clickRune = (event: MouseEvent) => {
+    if (!canInteract() || effects.type !== "rune" || event.button !== 0) return;
+    for (const entry of entries.values()) {
+      const origin = hitRune(
+        { x: event.clientX, y: event.clientY },
+        entry.bounds,
+        entry.tilt,
+        entry.textures.pixels,
+        entry.textures.canvas.width,
+      );
+      if (!origin) continue;
+      entry.ripples.push({ origin, started: time });
+      if (entry.ripples.length > runeRippleCount) entry.ripples.shift();
+      break;
+    }
+  };
   const program = GlProgram.from({
     vertex: effectVertex,
     fragment: effectFragment,
@@ -180,11 +252,20 @@ export async function createEffectScene(host: HTMLElement) {
               uKind: { value: 1, type: "f32" },
               uIntensity: { value: 0.7, type: "f32" },
               uSpeed: { value: 0.8, type: "f32" },
+              uDisturbance: { value: 0.5, type: "f32" },
+              uHaloWidth: { value: 0.014, type: "f32" },
               uAngle: { value: 0, type: "f32" },
               uSeed: { value: entries.size * 1.7, type: "f32" },
               uCold: { value: [0, 0, 0], type: "vec3<f32>" },
               uWarm: { value: [1, 0.4, 0.1], type: "vec3<f32>" },
               uHot: { value: [1, 1, 1], type: "vec3<f32>" },
+              uPointer: { value: [-10, -10, 0, 0], type: "vec4<f32>" },
+              uTilt: { value: [0, 0], type: "vec2<f32>" },
+              uRipples: {
+                value: new Float32Array(runeRippleCount * 4),
+                type: "vec4<f32>",
+                size: runeRippleCount,
+              },
             },
           },
         });
@@ -205,6 +286,10 @@ export async function createEffectScene(host: HTMLElement) {
           glow,
           path,
           textures: glyphTexture,
+          bounds: { x: 0, y: 0, size: 1 },
+          tilt: [0, 0],
+          wind: [0, 0],
+          ripples: [],
         };
         entries.set(element, entry);
       }
@@ -231,6 +316,8 @@ export async function createEffectScene(host: HTMLElement) {
       uniforms.uKind = fire ? 1 : 2;
       uniforms.uIntensity = settings.intensity / 100;
       uniforms.uSpeed = settings.speed / 100;
+      uniforms.uDisturbance = effect.fire.disturbance / 100;
+      uniforms.uHaloWidth = 0.028 * (effect.rune.haloWidth / 100);
       uniforms.uAngle = (direction * Math.PI) / 180;
       uniforms.uCold = new Color(fire ? palette.cold : color)
         .toArray()
@@ -244,6 +331,11 @@ export async function createEffectScene(host: HTMLElement) {
         ? 0.45 + settings.intensity / 110
         : 1.0 + settings.intensity / 70;
       const size = box.width * 1.25;
+      entry.bounds = {
+        x: box.left - box.width * 0.125,
+        y: box.top - box.height * 0.125,
+        size,
+      };
       entry.sprite.width = entry.sprite.height = size;
       entry.container.position.set(
         box.left - rect.left - box.width * 0.125 + 32,
@@ -255,12 +347,15 @@ export async function createEffectScene(host: HTMLElement) {
     // 所有共享实例换绑后再回收旧方向的纹理。
     for (const flame of oldFlames) flame.destroy(true);
     // 成功绘制后才隐藏原始 SVG；无 GPU 时仍显示原字形。
+    updateInteraction(0);
     app.render();
     for (const element of retained) element.dataset.effectReady = "true";
   };
 
   const tick = () => {
-    time += Math.min(app.ticker.deltaMS, 50) / 1000;
+    const delta = Math.min(app.ticker.deltaMS, 50) / 1000;
+    time += delta;
+    updateInteraction(delta);
     for (const entry of entries.values())
       entry.filter.resources.effectUniforms.uniforms.uTime = time;
   };
@@ -271,6 +366,7 @@ export async function createEffectScene(host: HTMLElement) {
     if (!document.hidden && inView && !reducedMotion.matches) app.start();
     else {
       app.stop();
+      resetInteraction();
       app.render();
     }
   };
@@ -283,6 +379,11 @@ export async function createEffectScene(host: HTMLElement) {
   visibility.observe(host);
   window.addEventListener("scroll", layout, true);
   window.addEventListener("resize", layout);
+  window.addEventListener("pointermove", movePointer, { passive: true });
+  window.addEventListener("pointerout", leaveWindow);
+  window.addEventListener("pointercancel", resetInteraction);
+  window.addEventListener("blur", resetInteraction);
+  host.addEventListener("click", clickRune);
   document.addEventListener("visibilitychange", syncPlayback);
   reducedMotion.addEventListener("change", syncPlayback);
   syncPlayback();
@@ -294,6 +395,7 @@ export async function createEffectScene(host: HTMLElement) {
     ) {
       glyphs = nextGlyphs;
       brush = nextBrush;
+      if (effects.type !== nextEffects.type) resetInteraction();
       effects = nextEffects;
       layout();
     },
@@ -306,6 +408,11 @@ export async function createEffectScene(host: HTMLElement) {
       visibility.disconnect();
       window.removeEventListener("scroll", layout, true);
       window.removeEventListener("resize", layout);
+      window.removeEventListener("pointermove", movePointer);
+      window.removeEventListener("pointerout", leaveWindow);
+      window.removeEventListener("pointercancel", resetInteraction);
+      window.removeEventListener("blur", resetInteraction);
+      host.removeEventListener("click", clickRune);
       document.removeEventListener("visibilitychange", syncPlayback);
       reducedMotion.removeEventListener("change", syncPlayback);
       for (const [element, entry] of entries) dispose(element, entry);

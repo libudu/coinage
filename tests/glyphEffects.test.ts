@@ -143,6 +143,38 @@ test("global effects persist in field patches without changing geometry, referen
   );
 });
 
+test("interaction settings default to half strength and width, validate bounds and persist as independent fields", () => {
+  assert.equal(defaultGlyphEffects.fire.disturbance, 50);
+  assert.equal(defaultGlyphEffects.rune.haloWidth, 50);
+  for (const [kind, key, min, max] of [
+    ["fire", "disturbance", 0, 100],
+    ["rune", "haloWidth", 10, 100],
+  ] as const) {
+    for (const value of [min, max]) {
+      const effects = structuredClone(defaultGlyphEffects);
+      (effects[kind] as Record<string, unknown>)[key] = value;
+      assert.equal(isGlyphEffects(effects), true);
+    }
+    for (const value of [min - 1, max + 1, NaN, Infinity, "50", undefined]) {
+      const effects = structuredClone(defaultGlyphEffects);
+      (effects[kind] as Record<string, unknown>)[key] = value;
+      assert.equal(isGlyphEffects(effects), false);
+    }
+  }
+  const before = demoProject();
+  before.style = structuredClone(defaultProjectStyle);
+  const next = structuredClone(before);
+  next.style!.effects.fire.disturbance = 0;
+  next.style!.effects.rune.haloWidth = 20;
+  const patch = createProjectPatch(before, next);
+  assert.deepEqual(patch, [
+    { op: "set", path: ["style", "effects", "fire", "disturbance"], value: 0 },
+    { op: "set", path: ["style", "effects", "rune", "haloWidth"], value: 20 },
+  ]);
+  assert.deepEqual(applyProjectPatch(before, patch), next);
+  assert.deepEqual(next.glyphs, before.glyphs);
+});
+
 test("global styles validate direction boundaries and preserve geometry and editor history across glyph management", () => {
   for (const direction of [0, 90, 180, 270, 360]) {
     const style = structuredClone(defaultProjectStyle);

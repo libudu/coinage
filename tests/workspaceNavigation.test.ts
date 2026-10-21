@@ -739,8 +739,27 @@ test("effects preserve separate parameters, save slider transactions and appear 
   await act(async () => slider.focus());
   await inputValue(slider, "95");
   await act(async () => slider.blur());
+  const disturbance = stylePage.querySelector<HTMLInputElement>(
+    'input[aria-label="扰动强度"]',
+  )!;
+  assert.equal(disturbance.value, "50");
+  assert.equal(disturbance.min, "0");
+  await act(async () => disturbance.focus());
+  await inputValue(disturbance, "35");
+  await inputValue(disturbance, "30");
+  await act(async () => disturbance.blur());
   await click(button(stylePage, "符文"));
+  assert.equal(stylePage.querySelector('input[aria-label="扰动强度"]'), null);
+  const haloWidth = stylePage.querySelector<HTMLInputElement>(
+    'input[aria-label="光晕粗细"]',
+  )!;
+  assert.equal(haloWidth.value, "50");
+  assert.equal(haloWidth.min, "10");
+  await act(async () => haloWidth.focus());
+  await inputValue(haloWidth, "35");
+  await act(async () => haloWidth.blur());
   await click(button(stylePage, "紫晶奥术"));
+  assert.equal(haloWidth.value, "35");
   for (const [label, value] of [["流光方向", "270"]] as const) {
     const range = stylePage.querySelector<HTMLInputElement>(
       `input[type="range"][aria-label="${label}"]`,
@@ -756,6 +775,11 @@ test("effects preserve separate parameters, save slider transactions and appear 
     "95",
   );
   assert.equal(button(stylePage, "幽蓝").getAttribute("aria-pressed"), "true");
+  assert.equal(
+    stylePage.querySelector<HTMLInputElement>('input[aria-label="扰动强度"]')!
+      .value,
+    "30",
+  );
   const direction = stylePage.querySelector<HTMLInputElement>(
     'input[type="range"][aria-label="火焰方向"]',
   )!;
@@ -776,9 +800,11 @@ test("effects preserve separate parameters, save slider transactions and appear 
     palette: "azure",
     intensity: 95,
     direction: 90,
+    disturbance: 30,
   });
   assert.equal(effect.rune.color, "#bd87ff");
   assert.equal(effect.rune.direction, 270);
+  assert.equal(effect.rune.haloWidth, 35);
   assert.deepEqual(saved.at(-1)!.glyphs[1].nodes, project.glyphs[1].nodes);
   assert.deepEqual(saved.at(-1)!.glyphs, project.glyphs);
   await click(button(container, "字库"));

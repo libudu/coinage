@@ -5,14 +5,33 @@ export type GlyphEffects = {
     intensity: number;
     speed: number;
     direction: number;
+    disturbance: number;
   };
-  rune: { color: string; intensity: number; speed: number; direction: number };
+  rune: {
+    color: string;
+    intensity: number;
+    speed: number;
+    direction: number;
+    haloWidth: number;
+  };
 };
 
 export const defaultGlyphEffects: GlyphEffects = {
   type: "none",
-  fire: { palette: "ember", intensity: 70, speed: 80, direction: 0 },
-  rune: { color: "#65dfff", intensity: 65, speed: 60, direction: 0 },
+  fire: {
+    palette: "ember",
+    intensity: 70,
+    speed: 80,
+    direction: 0,
+    disturbance: 50,
+  },
+  rune: {
+    color: "#65dfff",
+    intensity: 65,
+    speed: 60,
+    direction: 0,
+    haloWidth: 50,
+  },
 };
 
 export const firePalettes = {
@@ -42,12 +61,14 @@ export function isGlyphEffects(value: unknown): value is GlyphEffects {
     validAmount(effect.fire.intensity, 20, 100) &&
     validAmount(effect.fire.speed, 20, 160) &&
     validAmount(effect.fire.direction, 0, 360) &&
+    validAmount(effect.fire.disturbance, 0, 100) &&
     !!effect.rune &&
     typeof effect.rune.color === "string" &&
     /^#[0-9a-f]{6}$/i.test(effect.rune.color) &&
     validAmount(effect.rune.intensity, 20, 100) &&
     validAmount(effect.rune.speed, 20, 160) &&
-    validAmount(effect.rune.direction, 0, 360)
+    validAmount(effect.rune.direction, 0, 360) &&
+    validAmount(effect.rune.haloWidth, 10, 100)
   );
 }
 

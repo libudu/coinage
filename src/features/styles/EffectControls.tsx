@@ -195,6 +195,27 @@ export function EffectControls() {
               />
             </label>
           ))}
+          <label className="block text-[12px] text-[#77856a]">
+            <span className="mb-[10px] flex justify-between">
+              {fire ? "扰动强度" : "光晕粗细"}
+              <span className="font-mono">
+                {fire ? effects.fire.disturbance : effects.rune.haloWidth}%
+              </span>
+            </span>
+            <TransactionalRange
+              key={`${effects.type}:interaction`}
+              aria-label={fire ? "扰动强度" : "光晕粗细"}
+              min={fire ? 0 : 10}
+              max={100}
+              value={fire ? effects.fire.disturbance : effects.rune.haloWidth}
+              onValueChange={(value, transaction) =>
+                change((e) => {
+                  if (fire) e.fire.disturbance = value;
+                  else e.rune.haloWidth = value;
+                }, transaction)
+              }
+            />
+          </label>
         </div>
       )}
     </Section>
