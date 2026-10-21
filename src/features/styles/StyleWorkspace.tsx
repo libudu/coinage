@@ -21,9 +21,9 @@ export function StyleWorkspace({ active = true }: { active?: boolean }) {
       aria-label="样式"
       className="h-full overflow-auto bg-[#f7f8f4] px-[48px] py-[48px] tablet:px-[28px] compact:px-[20px] compact:py-[28px]"
     >
-      <div className="mx-auto max-w-[800px]">
+      <div className="mx-auto max-w-[840px]">
         <h2 className="m-0 mb-[28px] text-[20px] font-semibold">样式</h2>
-        <div className="grid grid-cols-[minmax(0,400px)_minmax(260px,300px)] items-start gap-[32px] compact:grid-cols-1 compact:gap-[20px]">
+        <div className="grid grid-cols-[minmax(0,400px)_minmax(324px,340px)] items-start gap-[32px] compact:grid-cols-1 compact:gap-[20px]">
           <div className="mx-auto w-full min-w-0 max-w-[400px]">
             <EffectPreview
               glyphs={[glyph]}

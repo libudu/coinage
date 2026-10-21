@@ -732,6 +732,16 @@ test("effects preserve separate parameters, save slider transactions and appear 
     'main[aria-label="样式"]',
   )!;
   await click(button(stylePage, "燃烧"));
+  assert.equal(
+    [...stylePage.querySelectorAll("button")].some(
+      (b) => b.textContent === "青绿",
+    ),
+    false,
+  );
+  await click(button(stylePage, "灰黑"));
+  assert.equal(button(stylePage, "灰黑").getAttribute("aria-pressed"), "true");
+  await key("s", true);
+  assert.equal(saved.at(-1)!.style!.effects.fire.palette, "ashen");
   await click(button(stylePage, "幽蓝"));
   const slider = stylePage.querySelector<HTMLInputElement>(
     'input[aria-label="火势"]',
@@ -805,6 +815,32 @@ test("effects preserve separate parameters, save slider transactions and appear 
   assert.equal(effect.rune.color, "#bd87ff");
   assert.equal(effect.rune.direction, 270);
   assert.equal(effect.rune.haloWidth, 35);
+  await click(button(stylePage, "古玉灵纹"));
+  assert.equal(
+    button(stylePage, "古玉灵纹").getAttribute("aria-pressed"),
+    "true",
+  );
+  assert.equal(haloWidth.value, "35");
+  await key("s", true);
+  assert.equal(saved.at(-1)!.style!.effects.rune.material, "jade");
+  assert.equal(saved.at(-1)!.style!.effects.rune.color, "#82aa87");
+  assert.equal(saved.at(-1)!.style!.effects.rune.direction, 270);
+  await click(button(stylePage, "紫晶奥术"));
+  await key("s", true);
+  assert.equal(saved.at(-1)!.style!.effects.rune.material, "light");
+  for (const [label, material, color] of [
+    ["鎏金圣印", "gold", "#d9aa48"],
+    ["冰蓝秘文", "ice", "#65dfff"],
+  ]) {
+    await click(button(stylePage, label));
+    assert.equal(button(stylePage, label).getAttribute("aria-pressed"), "true");
+    await key("s", true);
+    const rune = saved.at(-1)!.style!.effects.rune;
+    assert.equal(rune.material, material);
+    assert.equal(rune.color, color);
+    assert.equal(rune.haloWidth, 35);
+    assert.equal(rune.direction, 270);
+  }
   assert.deepEqual(saved.at(-1)!.glyphs[1].nodes, project.glyphs[1].nodes);
   assert.deepEqual(saved.at(-1)!.glyphs, project.glyphs);
   await click(button(container, "字库"));

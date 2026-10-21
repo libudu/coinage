@@ -1,5 +1,10 @@
 import { fireUniforms, fireSampling, fireFragment } from "./fireEffect";
-import { runeUniforms, runeProjection, runeFragment } from "./runeEffect";
+import {
+  runeUniforms,
+  runeProjection,
+  runeSurface,
+  runeFragment,
+} from "./runeEffect";
 
 export const effectVertex = `
 in vec2 aPosition;
@@ -57,6 +62,7 @@ float mask(vec2 uv) {
 }
 ${fireSampling}
 ${runeProjection}
+${runeSurface}
 void main() {
   vec2 uv = uKind < 1.5 ? vUv : runeUv(vUv);
   float t = uTime * uSpeed + uSeed;

@@ -16,9 +16,10 @@ import type { Glyph } from "../../core/model";
 import { effectFragment, effectVertex } from "./effectShaders";
 import { buildFlameField, flameFieldScale, flameFieldSize } from "./flameField";
 import { createEffectPointer } from "./effectInteraction";
-import { smoothFireWind } from "./fireEffect";
+import { createFireAirflow, fireGustCount } from "./fireEffect";
 import {
   hitRune,
+  runeMaterials,
   runeRippleCount,
   runeRippleDuration,
   runePointerTilt,
@@ -45,22 +46,22 @@ type Entry = {
   textures: GlyphTexture;
   bounds: EffectBounds;
   tilt: number[];
-  wind: number[];
+  airflow: ReturnType<typeof createFireAirflow>;
   ripples: RuneRipple[];
 };
 
 function createMask(path: string) {
   const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = 512;
+  canvas.width = canvas.height = 1024;
   const context = canvas.getContext("2d");
   if (!context) throw new Error("无法创建字形纹理");
-  context.scale(512 / 800, 512 / 800);
+  context.scale(canvas.width / 800, canvas.height / 800);
   context.translate(80, 80);
   context.fillStyle = "white";
   context.fill(new Path2D(path));
   return {
     canvas,
-    pixels: context.getImageData(0, 0, 512, 512).data,
+    pixels: context.getImageData(0, 0, canvas.width, canvas.height).data,
     mask: Texture.from(canvas),
     flame: null,
     direction: -1,
@@ -122,10 +123,7 @@ export async function createEffectScene(host: HTMLElement) {
     for (const entry of entries.values()) {
       const uniforms = entry.filter.resources.effectUniforms.uniforms;
       const frame = pointer.frame(entry.bounds, now);
-      smoothFireWind(entry.wind, frame.pointer[2], frame.pointer[3], delta);
-      frame.pointer[2] = entry.wind[0];
-      frame.pointer[3] = entry.wind[1];
-      uniforms.uPointer = frame.pointer;
+      if (effects.type === "fire") entry.airflow.update(frame.pointer, delta);
       const smoothing = 1 - Math.exp(-delta / 0.1);
       const tilt = runePointerTilt(frame.pointer);
       for (let i = 0; i < 2; i++)
@@ -141,7 +139,7 @@ export async function createEffectScene(host: HTMLElement) {
     pointer.reset();
     for (const entry of entries.values()) {
       entry.tilt.fill(0);
-      entry.wind.fill(0);
+      entry.airflow.reset();
       entry.ripples = [];
     }
     updateInteraction(0);
@@ -241,6 +239,7 @@ export async function createEffectScene(host: HTMLElement) {
         }
         glyphTexture.references++;
         const sprite = new Sprite(Texture.WHITE);
+        const airflow = createFireAirflow();
         const filter = new Filter({
           glProgram: program,
           clipToViewport: false,
@@ -254,12 +253,22 @@ export async function createEffectScene(host: HTMLElement) {
               uSpeed: { value: 0.8, type: "f32" },
               uDisturbance: { value: 0.5, type: "f32" },
               uHaloWidth: { value: 0.014, type: "f32" },
+              uMaterial: { value: 0, type: "f32" },
               uAngle: { value: 0, type: "f32" },
               uSeed: { value: entries.size * 1.7, type: "f32" },
               uCold: { value: [0, 0, 0], type: "vec3<f32>" },
               uWarm: { value: [1, 0.4, 0.1], type: "vec3<f32>" },
               uHot: { value: [1, 1, 1], type: "vec3<f32>" },
-              uPointer: { value: [-10, -10, 0, 0], type: "vec4<f32>" },
+              uAirSources: {
+                value: airflow.sources,
+                type: "vec4<f32>",
+                size: fireGustCount,
+              },
+              uAirMotion: {
+                value: airflow.motion,
+                type: "vec4<f32>",
+                size: fireGustCount,
+              },
               uTilt: { value: [0, 0], type: "vec2<f32>" },
               uRipples: {
                 value: new Float32Array(runeRippleCount * 4),
@@ -288,7 +297,7 @@ export async function createEffectScene(host: HTMLElement) {
           textures: glyphTexture,
           bounds: { x: 0, y: 0, size: 1 },
           tilt: [0, 0],
-          wind: [0, 0],
+          airflow,
           ripples: [],
         };
         entries.set(element, entry);
@@ -312,24 +321,26 @@ export async function createEffectScene(host: HTMLElement) {
       ).source;
       const palette = firePalettes[effect.fire.palette];
       const color = fire ? palette.warm : effect.rune.color;
+      const material = runeMaterials[effect.rune.material ?? "light"];
       const uniforms = entry.filter.resources.effectUniforms.uniforms;
       uniforms.uKind = fire ? 1 : 2;
       uniforms.uIntensity = settings.intensity / 100;
       uniforms.uSpeed = settings.speed / 100;
       uniforms.uDisturbance = effect.fire.disturbance / 100;
       uniforms.uHaloWidth = 0.028 * (effect.rune.haloWidth / 100);
+      uniforms.uMaterial = material.id;
       uniforms.uAngle = (direction * Math.PI) / 180;
-      uniforms.uCold = new Color(fire ? palette.cold : color)
+      uniforms.uCold = new Color(fire ? palette.cold : (material.cold ?? color))
         .toArray()
         .slice(0, 3);
       uniforms.uWarm = new Color(color).toArray().slice(0, 3);
-      uniforms.uHot = new Color(fire ? palette.hot : "#f4fbff")
+      uniforms.uHot = new Color(fire ? palette.hot : material.hot)
         .toArray()
         .slice(0, 3);
       entry.glow.color = color;
       entry.glow.outerStrength = fire
         ? 0.45 + settings.intensity / 110
-        : 1.0 + settings.intensity / 70;
+        : material.glow + settings.intensity * material.glowGain;
       const size = box.width * 1.25;
       entry.bounds = {
         x: box.left - box.width * 0.125,

@@ -78,15 +78,17 @@ export function EffectControls() {
                     key={preset.label}
                     variant="bare"
                     aria-pressed={
+                      (effects.rune.material ?? "light") === preset.material &&
                       effects.rune.color === preset.color &&
                       effects.rune.intensity === preset.intensity &&
                       effects.rune.speed === preset.speed
                     }
-                    className="rounded-[5px] border border-solid border-[#dfe6d4] px-[8px] py-[7px] text-[11px] hover:bg-[#edf2e3] aria-pressed:bg-[#e7eddf]"
+                    className="shrink-0 whitespace-nowrap rounded-[5px] border border-solid border-[#dfe6d4] px-[8px] py-[7px] text-[11px] hover:bg-[#edf2e3] aria-pressed:bg-[#e7eddf]"
                     onClick={() =>
                       change((e) => {
                         e.rune = {
                           ...e.rune,
+                          material: preset.material,
                           color: preset.color,
                           intensity: preset.intensity,
                           speed: preset.speed,

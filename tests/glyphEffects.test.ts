@@ -6,6 +6,8 @@ import {
   defaultProjectStyle,
   isGlyphEffects,
   isProjectStyle,
+  runePresets,
+  firePalettes,
 } from "../src/core/glyphEffects";
 import { demoProject } from "../src/core/demo";
 import {
@@ -23,7 +25,7 @@ test("flame fuel rises continuously from ink without leaking below or into empty
   for (let y = 60; y <= 64; y++) pixels[index(50, y) + 3] = 255;
   const field = buildFlameField(pixels, size);
   assert.equal(field[index(50, 60)], 0);
-  assert.equal(field[index(50, 60) + 1], 255);
+  assert.equal(field[index(50, 60) + 1], 0);
   let lastHeight = 0;
   for (let y = 59; y >= 47; y--) {
     assert.ok(field[index(50, y)] > lastHeight);
@@ -37,6 +39,98 @@ test("flame fuel rises continuously from ink without leaking below or into empty
     [50, 40],
   ]) {
     assert.equal(field[index(x, y) + 1], 0);
+  }
+});
+
+test("flame roots never paint inside antialiased diagonal ink or below its back edge", () => {
+  const size = 100;
+  const pixels = new Uint8ClampedArray(size * size * 4);
+  for (let x = 20; x < 80; x++)
+    for (let y = x; y <= x + 4; y++)
+      pixels[(y * size + x) * 4 + 3] = y === x ? 100 : 255;
+  const field = buildFlameField(pixels, size);
+  for (let x = 20; x < 80; x++) {
+    for (let y = x; y <= x + 5; y++)
+      assert.equal(field[(y * size + x) * 4 + 1], 0);
+    assert.ok(field[((x - 1) * size + x) * 4 + 1] > 0);
+  }
+});
+
+test("jade material validates and persists independently of rune color, without affecting exports", () => {
+  const before = demoProject();
+  before.style = structuredClone(defaultProjectStyle);
+  const next = structuredClone(before);
+  next.style!.effects.type = "rune";
+  const { label, ...jade } = runePresets.find(
+    (preset) => preset.material === "jade",
+  )!;
+  Object.assign(next.style!.effects.rune, jade);
+  assert.equal(label, "古玉灵纹");
+  assert.equal(isProject(next), true);
+  const patch = createProjectPatch(before, next);
+  assert.ok(
+    patch.some((p) => p.path.join(".") === "style.effects.rune.material"),
+  );
+  assert.deepEqual(applyProjectPatch(before, patch), next);
+  assert.equal(
+    exportSvg(next.glyphs[0], next.brush),
+    exportSvg(before.glyphs[0], before.brush),
+  );
+  const luminous = structuredClone(next.style!.effects);
+  delete luminous.rune.material;
+  assert.equal(isGlyphEffects(luminous), true);
+  for (const material of ["stone", null, 0]) {
+    const invalid = structuredClone(next.style!.effects);
+    (invalid.rune as Record<string, unknown>).material = material;
+    assert.equal(isGlyphEffects(invalid), false);
+  }
+});
+
+test("all rune presets retain their material when color and motion settings change and save as field patches", () => {
+  const before = demoProject();
+  before.style = structuredClone(defaultProjectStyle);
+  const materials = new Set<string>();
+  for (const { label, ...preset } of runePresets) {
+    const next = structuredClone(before);
+    next.style!.effects.type = "rune";
+    Object.assign(next.style!.effects.rune, preset, {
+      color: "#789abc",
+      direction: 135,
+      speed: 75,
+    });
+    assert.equal(isProject(next), true, label);
+    assert.equal(next.style!.effects.rune.material, preset.material);
+    materials.add(preset.material);
+    const patch = createProjectPatch(before, next);
+    assert.deepEqual(applyProjectPatch(before, patch), next);
+    assert.deepEqual(next.glyphs, before.glyphs);
+    assert.ok(patch.every((operation) => operation.path[0] === "style"));
+  }
+  assert.deepEqual(materials, new Set(["ice", "light", "gold", "jade"]));
+});
+
+test("all fire palettes including ashen validate and save without changing rune settings", () => {
+  const before = demoProject();
+  before.style = structuredClone(defaultProjectStyle);
+  for (const palette of Object.keys(
+    firePalettes,
+  ) as (keyof typeof firePalettes)[]) {
+    const next = structuredClone(before);
+    next.style!.effects.type = "fire";
+    next.style!.effects.fire.palette = palette;
+    assert.equal(isProject(next), true);
+    assert.deepEqual(
+      applyProjectPatch(before, createProjectPatch(before, next)),
+      next,
+    );
+    assert.deepEqual(next.style!.effects.rune, before.style!.effects.rune);
+    assert.deepEqual(next.glyphs, before.glyphs);
+  }
+  assert.equal(firePalettes.ashen.label, "灰黑");
+  const invalid = structuredClone(defaultGlyphEffects);
+  for (const palette of ["landscape", "toString"]) {
+    (invalid.fire as Record<string, unknown>).palette = palette;
+    assert.equal(isGlyphEffects(invalid), false);
   }
 });
 

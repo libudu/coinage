@@ -1,7 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createEffectPointer } from "../src/features/styles/effectInteraction";
-import { smoothFireWind } from "../src/features/styles/fireEffect";
+import {
+  createFireAirflow,
+  fireGustCount,
+  smoothFireWind,
+} from "../src/features/styles/fireEffect";
 import {
   hitRune,
   runeLocalPoint,
@@ -13,6 +17,56 @@ import {
 } from "../src/features/styles/runeEffect";
 
 const bounds = { x: 100, y: 200, size: 200 };
+
+test("fire airflow leaves a drifting, spreading wake that decays after the pointer has left", () => {
+  const air = createFireAirflow();
+  air.update([0.1, 0.5, 2, 0], 0);
+  for (let i = 1; i <= 16; i++) air.update([0.1 + i * 0.025, 0.5, 2, 0], 0.025);
+  assert.ok(air.motion.some((value, i) => i % 4 === 0 && value > 0));
+  const origin = air.sources[0];
+  const width = air.motion[2];
+  const strength = air.motion[0];
+  air.update([-10, -10, 0, 0], 0.1);
+  assert.ok(air.sources[0] > origin);
+  assert.ok(air.motion[2] > width);
+  assert.ok(air.motion[0] > 0 && air.motion[0] < strength);
+  assert.ok(air.motion.every((value, i) => i % 4 !== 2 || value <= 0.5));
+  air.update([-10, -10, 0, 0], 1);
+  assert.ok(air.sources.every((value) => value === 0));
+  assert.ok(air.motion.every((value) => value === 0));
+});
+
+test("fire airflow preserves both directions during reversal, bounds storage and clears all transient state", () => {
+  const air = createFireAirflow();
+  air.update([0.5, 0.5, 3, 0], 0);
+  for (let i = 0; i < 25; i++) air.update([0.5, 0.5, 3, 0], 0.025);
+  for (let i = 0; i < 12; i++) air.update([0.5, 0.5, -3, 0], 0.025);
+  const velocities = [...air.motion].filter((_, i) => i % 4 === 0);
+  assert.ok(velocities.some((value) => value > 0));
+  assert.ok(velocities.some((value) => value < 0));
+  assert.equal(air.sources.length, fireGustCount * 4);
+  assert.ok([...air.sources, ...air.motion].every(Number.isFinite));
+  air.reset();
+  assert.ok([...air.sources, ...air.motion].every((value) => value === 0));
+  air.update([0.5, 0.5, 0, 0], 0.025);
+  assert.ok(air.motion.every((value) => value === 0));
+  for (let i = 0; i < 40; i++) air.update([5, 5, 3, 3], 0.025);
+  assert.ok(air.motion.every((value) => value === 0));
+});
+
+test("airflow emission and diffusion follow elapsed time rather than frame count", () => {
+  const sample = (dt: number) => {
+    const air = createFireAirflow();
+    air.update([0.1, 0.5, 1, 0], 0);
+    for (let i = 1; i <= Math.round(0.7 / dt); i++)
+      air.update([0.1 + i * dt, 0.5, 1, 0], dt);
+    return [...air.sources, ...air.motion];
+  };
+  const slow = sample(0.05);
+  const fast = sample(0.01);
+  assert.ok(slow.some((value) => value !== 0));
+  assert.ok(slow.every((value, i) => Math.abs(value - fast[i]) < 1e-6));
+});
 
 test("fire wind softens onset and reversal with frame-rate independent easing", () => {
   const wind = [0, 0];
