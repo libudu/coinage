@@ -2,6 +2,7 @@ import { defaultProjectStyle } from "../../core/glyphEffects";
 import { EffectPreview } from "../styles/EffectPreview";
 import { Input } from "../../shared/components/Input";
 import { Button } from "../../shared/components/Button";
+import { Menu } from "../../shared/components/Menu";
 import { useMemo, useState } from "react";
 import type { Glyph, Point } from "../../core/model";
 import { Icon } from "../../shared/components/Icon";
@@ -18,6 +19,13 @@ type Props = {
   openGlyphContextMenu: (id: string, position: Point) => void;
 };
 
+const glyphSizeClasses = {
+  large: "h-[200px] w-[200px] compact:h-[160px] compact:w-[160px]",
+  medium: "h-[150px] w-[150px] compact:h-[120px] compact:w-[120px]",
+  small: "h-[100px] w-[100px] compact:h-[80px] compact:w-[80px]",
+};
+const glyphSizeLabels = { large: "大", medium: "中", small: "小" };
+
 export function GlyphLibrary({
   onEdit,
   openGlyphContextMenu,
@@ -26,9 +34,15 @@ export function GlyphLibrary({
   const glyphs = useProject((s) => s.project.glyphs);
   const brush = useProject((s) => s.project.brush);
   const style = useProject((s) => s.project.style ?? defaultProjectStyle);
-  const [sentence, setSentence] = useState("");
+  const [sentence, setSentence] = useState(() => loadLocalSettings().sentence);
   const [showGrid, setShowGrid] = useState(
     () => loadLocalSettings().showSentenceGrid,
+  );
+  const [showEffects, setShowEffects] = useState(
+    () => loadLocalSettings().showSentenceEffects,
+  );
+  const [glyphSize, setGlyphSize] = useState(
+    () => loadLocalSettings().sentenceGlyphSize,
   );
   const characters = useMemo(() => {
     const result = new Map<string, Glyph>();
@@ -65,15 +79,60 @@ export function GlyphLibrary({
           aria-label="造句预览"
           className="border-b border-solid border-[var(--border)] pb-[32px]"
         >
-          <div className="relative">
+          <div className="flex items-center gap-[16px] rounded-[8px] border border-solid border-[#dfe4d7] bg-[#fcfdf9] pr-[8px] focus-within:outline-2 focus-within:outline-solid focus-within:outline-[#81a16d] focus-within:outline-offset-[3px] compact:gap-[10px]">
             <Input
-              variant="sentence"
+              variant="bare"
+              className="h-[48px] min-w-0 flex-1 rounded-[8px] border-0 bg-transparent pl-[16px] text-[14px] placeholder:text-[#a0a69b] focus-visible:outline-none"
               type="text"
               aria-label="造句预览"
               placeholder="输入一句话"
               value={sentence}
-              onChange={(event) => setSentence(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value;
+                setSentence(next);
+                saveLocalSettings({ sentence: next });
+              }}
             />
+            <Menu
+              label="字形大小"
+              hover
+              containerClassName="relative shrink-0"
+              panelClassName="absolute right-0 top-full z-20 pt-[4px]"
+              trigger={(props) => (
+                <Button
+                  {...props}
+                  variant="bare"
+                  aria-label="字形大小"
+                  title="字形大小"
+                  className="grid h-[32px] w-[32px] place-items-center rounded-[5px] bg-[#e7eddf] text-[13px] text-[#385e3d] hover:bg-[#dce7d3]"
+                >
+                  {glyphSizeLabels[glyphSize]}
+                </Button>
+              )}
+              items={(["large", "medium", "small"] as const).map((size) => ({
+                label: glyphSizeLabels[size],
+                action: () => {
+                  setGlyphSize(size);
+                  saveLocalSettings({ sentenceGlyphSize: size });
+                },
+              }))}
+            />
+            <Button
+              variant="bare"
+              type="button"
+              aria-label="显示特效"
+              aria-pressed={showEffects}
+              title={showEffects ? "隐藏特效" : "显示特效"}
+              onClick={() => {
+                const next = !showEffects;
+                setShowEffects(next);
+                saveLocalSettings({ showSentenceEffects: next });
+              }}
+              className={`grid h-[32px] w-[32px] shrink-0 place-items-center rounded-[5px]
+                ${showEffects ? "bg-[#e7eddf] text-[#385e3d] hover:bg-[#dce7d3]" : "text-[#7a8671] hover:bg-[#edf1e6]"}`}
+            >
+              <Icon name="sparkles" size={18} />
+            </Button>
             <Button
               variant="bare"
               type="button"
@@ -85,7 +144,7 @@ export function GlyphLibrary({
                 setShowGrid(next);
                 saveLocalSettings({ showSentenceGrid: next });
               }}
-              className={`absolute right-[8px] top-[8px] grid h-[32px] w-[32px] place-items-center rounded-[5px]
+              className={`grid h-[32px] w-[32px] shrink-0 place-items-center rounded-[5px]
                 ${showGrid ? "bg-[#e7eddf] text-[#385e3d] hover:bg-[#dce7d3]" : "text-[#7a8671] hover:bg-[#edf1e6]"}`}
             >
               <Icon name="grid" size={18} />
@@ -96,7 +155,7 @@ export function GlyphLibrary({
               glyphs={preview.flatMap(({ glyph }) => (glyph ? [glyph] : []))}
               brush={brush}
               effects={style.effects}
-              active={active}
+              active={active && showEffects}
               className="mt-[24px]"
             >
               <div
@@ -110,7 +169,7 @@ export function GlyphLibrary({
                     data-effect-glyph={glyph?.id}
                     role="img"
                     aria-label={glyph ? text : `${text}（缺字）`}
-                    className={`h-[100px] w-[100px] shrink-0 rounded-[3px] border border-solid [&_svg]:h-full [&_svg]:w-full compact:h-[80px] compact:w-[80px] ${glyph ? (showGrid ? "border-[#c3cdbb] bg-transparent" : "border-transparent bg-transparent") : "border-2 border-[#b2c0a8] bg-[#edf1e6]"}`}
+                    className={`${glyphSizeClasses[glyphSize]} shrink-0 rounded-[3px] border border-solid [&_svg]:h-full [&_svg]:w-full ${glyph ? (showGrid ? "border-[#c3cdbb] bg-transparent" : "border-transparent bg-transparent") : "border-2 border-[#b2c0a8] bg-[#edf1e6]"}`}
                   >
                     {glyph && (
                       <GlyphPreview

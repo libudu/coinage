@@ -12,6 +12,7 @@ export type IconName =
   | "plus"
   | "minus"
   | "grid"
+  | "sparkles"
   | "eye"
   | "eyeOff"
   | "lock"
@@ -84,6 +85,9 @@ const paths: Record<IconName, React.ReactNode> = {
       <rect x="4" y="4" width="16" height="16" rx="2" />
       <path d="M4 12h16M12 4v16" />
     </>
+  ),
+  sparkles: (
+    <path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5ZM4 2v4M2 4h4M20 18v4M18 20h4" />
   ),
   eye: (
     <>

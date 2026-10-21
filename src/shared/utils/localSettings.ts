@@ -1,9 +1,17 @@
 export type LocalSettings = {
+  sentence: string;
   showSentenceGrid: boolean;
+  showSentenceEffects: boolean;
+  sentenceGlyphSize: "large" | "medium" | "small";
 };
 
 const KEY = "coinage.settings";
-const defaults: LocalSettings = { showSentenceGrid: true };
+const defaults: LocalSettings = {
+  sentence: "",
+  showSentenceGrid: true,
+  showSentenceEffects: true,
+  sentenceGlyphSize: "small",
+};
 
 export function loadLocalSettings(
   storage?: Pick<Storage, "getItem">,
@@ -16,8 +24,17 @@ export function loadLocalSettings(
     if (!value || typeof value !== "object" || Array.isArray(value))
       return settings;
     const saved = value as Record<string, unknown>;
+    if (typeof saved.sentence === "string") settings.sentence = saved.sentence;
     if (typeof saved.showSentenceGrid === "boolean")
       settings.showSentenceGrid = saved.showSentenceGrid;
+    if (typeof saved.showSentenceEffects === "boolean")
+      settings.showSentenceEffects = saved.showSentenceEffects;
+    if (
+      saved.sentenceGlyphSize === "large" ||
+      saved.sentenceGlyphSize === "medium" ||
+      saved.sentenceGlyphSize === "small"
+    )
+      settings.sentenceGlyphSize = saved.sentenceGlyphSize;
   } catch {}
   return settings;
 }

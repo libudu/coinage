@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import type { TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { register } from "node:module";
@@ -48,6 +48,8 @@ Object.assign(dom.window.HTMLDialogElement.prototype, {
 });
 const { createRoot } = await import("react-dom/client");
 const { default: App } = await import("../src/app/App");
+
+beforeEach(() => dom.window.localStorage.removeItem("coinage.settings"));
 
 function manuscript(): Project {
   const glyphs = ["甲", "乙", "𠮷", "字形 04", "甲"].map((name, index) => {
@@ -448,6 +450,38 @@ test("the library composes glyph artwork by character name and reserves one cell
   );
 });
 
+test("sentence text restores exactly on remount and clearing it persists without changing the manuscript", async (t) => {
+  const { container, project, saved } = await render(t);
+  const input = library(container).querySelector<HTMLInputElement>(
+    'input[aria-label="造句预览"]',
+  )!;
+  assert.equal(input.value, "");
+  await inputValue(input, " 甲𠮷丙 ");
+  await click(button(library(container), "显示字格"));
+  await key("s", true);
+  assert.deepEqual(saved.at(-1), project);
+  const reopened = await render(t);
+  const reopenedPage = library(reopened.container);
+  const restored = reopenedPage.querySelector<HTMLInputElement>(
+    'input[aria-label="造句预览"]',
+  )!;
+  assert.equal(restored.value, " 甲𠮷丙 ");
+  assert.equal(reopenedPage.querySelectorAll('[role="img"]').length, 5);
+  assert.ok(reopenedPage.querySelector('[role="img"][aria-label="甲"] path'));
+  await inputValue(restored, "");
+  const cleared = await render(t);
+  assert.equal(
+    library(cleared.container).querySelector<HTMLInputElement>(
+      'input[aria-label="造句预览"]',
+    )!.value,
+    "",
+  );
+  assert.equal(
+    library(cleared.container).querySelector('[aria-label="句子预览"]'),
+    null,
+  );
+});
+
 test("sentence grids default on, hide only matched cells and remember the preference on remount", async (t) => {
   dom.window.localStorage.removeItem("coinage.settings");
   t.after(() => dom.window.localStorage.removeItem("coinage.settings"));
@@ -514,6 +548,81 @@ test("the sentence grid toggle still works when local settings cannot be saved",
       .querySelector('[role="img"]')!
       .classList.contains("border-transparent"),
   );
+});
+
+test("sentence effect visibility and glyph sizes persist without changing artwork or the manuscript", async (t) => {
+  dom.window.localStorage.removeItem("coinage.settings");
+  t.after(() => dom.window.localStorage.removeItem("coinage.settings"));
+  const { container, project, saved } = await render(t);
+  const page = library(container);
+  const effects = button(page, "显示特效");
+  const size = button(page, "字形大小");
+  assert.equal(effects.getAttribute("aria-pressed"), "true");
+  assert.equal(effects.title, "隐藏特效");
+  assert.equal(size.textContent, "小");
+  assert.equal(page.querySelector("select"), null);
+  const hoverSize = async () => {
+    await act(async () => {
+      size.dispatchEvent(
+        new dom.window.MouseEvent("pointerover", { bubbles: true }),
+      );
+    });
+  };
+  await hoverSize();
+  assert.equal(size.getAttribute("aria-expanded"), "true");
+  assert.deepEqual(
+    Array.from(
+      page.querySelectorAll('[role="menuitem"]'),
+      (option) => option.textContent,
+    ),
+    ["大", "中", "小"],
+  );
+  await act(async () => {
+    size.dispatchEvent(
+      new dom.window.MouseEvent("pointerout", {
+        bubbles: true,
+        relatedTarget: page,
+      }),
+    );
+  });
+  assert.equal(size.getAttribute("aria-expanded"), "false");
+  await inputValue(
+    page.querySelector<HTMLInputElement>('input[type="text"]')!,
+    "甲丙",
+  );
+  const cells = Array.from(page.querySelectorAll('[role="img"]'));
+  const path = cells[0].querySelector("path")!.getAttribute("d");
+  const cards = page.querySelector('[aria-label="全部字符"]')!.innerHTML;
+  for (const [label, width] of [
+    ["大", 200],
+    ["中", 150],
+    ["小", 100],
+    ["大", 200],
+  ] as const) {
+    await hoverSize();
+    await click(button(page.querySelector('[role="menu"]')!, label));
+    assert.equal(size.textContent, label);
+    assert.equal(size.getAttribute("aria-expanded"), "false");
+    for (const cell of cells)
+      assert.ok(cell.classList.contains(`w-[${width}px]`));
+    assert.equal(cells[0].querySelector("path")!.getAttribute("d"), path);
+    assert.equal(cells[1].querySelector("svg"), null);
+  }
+  await click(effects);
+  assert.equal(effects.getAttribute("aria-pressed"), "false");
+  assert.equal(effects.title, "显示特效");
+  assert.equal(cells[0].querySelector("path")!.getAttribute("d"), path);
+  assert.equal(page.querySelector('[aria-label="全部字符"]')!.innerHTML, cards);
+  await key("s", true);
+  assert.deepEqual(saved.at(-1), project);
+  assert.equal(button(container, "撤销 Ctrl+Z").disabled, true);
+  const reopened = await render(t);
+  const reopenedPage = library(reopened.container);
+  assert.equal(
+    button(reopenedPage, "显示特效").getAttribute("aria-pressed"),
+    "false",
+  );
+  assert.equal(button(reopenedPage, "字形大小").textContent, "大");
 });
 
 test("library cards open the selected glyph and navigation preserves the editor view and preview text", async (t) => {
