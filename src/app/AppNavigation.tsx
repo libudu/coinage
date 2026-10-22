@@ -1,5 +1,6 @@
 import { Button } from "../shared/components/Button";
 import { Icon } from "../shared/components/Icon";
+import { version } from "../../package.json";
 
 export type WorkspacePage = "library" | "editor" | "styles";
 
@@ -11,22 +12,30 @@ export function AppNavigation({
   onChange: (page: WorkspacePage) => void;
 }) {
   return (
-    <aside className="flex w-[80px] shrink-0 flex-col items-center gap-[32px] border-r border-solid border-[var(--border)] bg-[#fcfdf9] py-[24px] compact:w-[64px] compact:py-[18px]">
-      <div
-        aria-label="Coinage"
-        className="grid h-[39px] w-[37px] place-items-center rounded-[9px] bg-[#2d4d39] text-[#e0edc6]"
-      >
-        <svg
-          width="26"
-          height="26"
-          viewBox="0 0 30 30"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          aria-hidden="true"
+    <aside className="flex w-[88px] shrink-0 flex-col items-center gap-[32px] border-r border-solid border-[var(--border)] bg-[#fcfdf9] py-[24px] compact:w-[76px] compact:py-[18px]">
+      <div className="flex flex-col items-center gap-[8px]">
+        <div
+          aria-label="Coinage"
+          className="grid h-[39px] w-[37px] place-items-center rounded-[9px] bg-[#2d4d39] text-[#e0edc6]"
         >
-          <path d="M5 23V11L15 4l10 7v12M5 16h20M15 4v22M8 25l7-9 7 9" />
-        </svg>
+          <svg
+            width="26"
+            height="26"
+            viewBox="0 0 30 30"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            aria-hidden="true"
+          >
+            <path d="M5 23V11L15 4l10 7v12M5 16h20M15 4v22M8 25l7-9 7 9" />
+          </svg>
+        </div>
+        <div className="flex flex-col items-center gap-[2px]">
+          <span className="text-[13px] font-semibold text-[#2d4e3b]">
+            Coinage
+          </span>
+          <span className="text-[11px] text-[#7e897c]">v{version}</span>
+        </div>
       </div>
       <nav
         aria-label="主导航"
