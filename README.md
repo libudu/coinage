@@ -66,13 +66,13 @@ pnpm run test:web
 
 ## GitHub 发布
 
-`.github/workflows/release.yml` 参考 LinAI 的 tag 发布流程，仅在推送 `v*` tag 时运行，普通分支推送不触发构建。tag 必须与 `package.json` 的版本一致，例如当前版本使用 `v0.3.0`。Windows runner 安装指定版本 pnpm，执行测试、桌面打包及便携包验证，再构建并验证纯前端单文件版。Release 同时附带 `Coinage v<版本号>.zip` 和 `Coinage v<版本号>.html`，随后将同一份 HTML 部署至 GitHub Pages。
+`.github/workflows/release.yml` 参考 LinAI 的 tag 发布流程，仅在推送 `v*` tag 时运行，普通分支推送不触发构建。tag 必须与 `package.json` 的版本一致，例如当前版本使用 `v0.3.1`。Windows runner 安装指定版本 pnpm，执行测试、桌面打包及便携包验证，再构建并验证纯前端单文件版。Release 同时附带 `Coinage v<版本号>.zip` 和 `Coinage v<版本号>.html`，随后将同一份 HTML 部署至 GitHub Pages。
 
 首次启用时，在仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**，并确保 `github-pages` 环境的部署规则允许版本 tag。推送前先同步版本号，再提交并推送对应 tag：
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.3.1
+git push origin v0.3.1
 ```
 
 工作流仅使用仓库自带的 `GITHUB_TOKEN`；无需额外配置发布密钥。构建输出限定在各自子目录，网页构建不会清理桌面版产物或 `dist/data/`。
