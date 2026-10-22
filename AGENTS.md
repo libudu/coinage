@@ -65,14 +65,17 @@ src/
 │   ├── tracing/
 │   │   ├── ImportDialog.tsx    # 图片导入与识别参数预览
 │   │   ├── trace.ts            # 前景分离、骨架提取、路径简化与图片读取
-│   │   ├── traceSettings.ts    # 后端导入参数读取与串行保存
+│   │   ├── traceSettings.ts    # 按版本选择导入参数存储与串行保存
+│   │   ├── browserTraceSettings.ts # 体验版 IndexedDB 导入参数读取与校验
 │   │   ├── createTraceWorker.ts # 描摹 Worker 工厂
+│   │   ├── createInlineTraceWorker.ts # 单文件体验版内嵌描摹 Worker 工厂
 │   │   └── trace.worker.ts     # 后台转换入口
 │   └── project/
 │       ├── projectStore.ts    # Zustand 手稿、会话、历史与编辑事务
 │       ├── projectAutosave.ts # 已提交手稿的一秒节流保存、重试与状态
 │       ├── useProject.tsx     # 状态 Provider、按需订阅与控件事务
 │       ├── projectStorage.ts  # 本地服务增量存储、确认基线、重试与保存队列
+│       ├── browserProjectStorage.ts # 体验版 IndexedDB 手稿、串行保存与多页面冲突
 │       └── useProjectFiles.ts # 图片读取、应急 JSON 副本及 SVG/PNG 导出
 ├── server/
 │   ├── app.ts                 # 本机 API、手稿校验、版本冲突与原子文件写入
@@ -96,6 +99,8 @@ src/
 │   └── utils/
 │       ├── keyboard.ts         # 弹层共用的保存快捷键判断
 │       ├── files.ts            # 文件下载与文件名处理
+│       ├── runtime.ts          # 体验版构建标识、项目和桌面下载链接
+│       ├── browserDatabase.ts  # 体验版 IndexedDB 连接与原子事务
 │       └── localSettings.ts    # 前端 localStorage 配置、默认值、校验与安全读写
 ├── styles/
 │   ├── index.css              # Tailwind 入口与保留原边界的断点变体
@@ -109,6 +114,7 @@ tests/nodeSelection.test.ts     # 多节点移动、边界、锁定与删除测�
 tests/strokeEdges.test.ts       # 边定位、共享曲线与笔锋、中点持久化与历史回归测试
 tests/server.test.ts            # 本地读写、备份、版本冲突与访问限制测试
 tests/projectStorage.test.ts    # 初始化、增量保存队列与错误测试
+tests/browserStorage.test.ts    # 浏览器手稿、原图、冲突、重试和导入配置测试
 tests/projectPatch.test.ts      # 字段增量、原图省略、顺序与补丁校验测试
 tests/projectStore.test.ts      # 状态、事务、历史、选择与锁定测试
 tests/projectAutosave.test.ts   # 保存触发、重试、冲突与过期响应测试
@@ -125,11 +131,15 @@ tests/sharedComponents.test.ts   # 公共弹窗、菜单、按钮、提示及导
 tests/localSettings.test.ts      # 前端配置默认值、持久化、无效数据与存储异常测试
 tests/support/domLoader.mjs     # 组件测试中的样式导入适配
 tests/package.smoke.ts          # 解压分发 ZIP 后验证便携 Node、重启与端口
+tests/webBuild.smoke.ts         # 单文件 HTML、内嵌 Worker 与后端接口隔离验证
 tests/packageZip.test.ts        # 分发清单、中文文件名、排除手稿与 ZIP 替换测试
 scripts/package.mjs             # 复制 Windows Node 与许可证，生成便携目录和版本 ZIP
 scripts/createPackageZip.mjs    # 只打包运行所需文件，保留空 data 目录
+scripts/singleFileHtml.ts       # 将体验版脚本与样式内嵌为单个 HTML 并校验资源
+.github/workflows/release.yml   # 仅版本 tag 触发桌面 Release 和 Pages 部署
 dist-template/双击运行.bat       # 使用包内 Node 启动
 vite.server.config.ts           # 无第三方运行依赖的服务端打包
+vite.config.ts                  # 桌面服务与 web 模式的单文件构建配置
 ```
 
 ## 开发约定
@@ -165,7 +175,8 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 
 - `projectAutosave` 只订阅已提交手稿，采用一秒节流：窗口内合并最新修改，后续提交不推迟计时；请求期间的新提交仍遵循一秒窗口。隐藏页面或 Ctrl+S 时先提交事务再立即 flush。
 - 保留重试、离页保护和过期响应检查；并发 flush 共享保存结果，`projectStorage` 负责串行队列和 revision。失败提示持续到保存成功，撤销回旧快照不能视为已保存。
-- 先从 `/api/project` 加载再挂载编辑器；读取失败禁止用示例覆盖，文件不存在时才创建初始手稿，不读取浏览器手稿存储。读取报错须区分 JSON 语法损坏与字段或配置校验失败，不支持的火焰配色标明 `style.effects.fire.palette`，校验失败不改写手稿或备份。
+- 桌面版先从 `/api/project` 加载再挂载编辑器；读取失败禁止用示例覆盖，文件不存在时才创建初始手稿，不读取浏览器手稿存储。读取报错须区分 JSON 语法损坏与字段或配置校验失败，不支持的火焰配色标明 `style.effects.fire.palette`，校验失败不改写手稿或备份。
+- `web` 模式为纯前端体验版，手稿、原图与导入配置只保存到 IndexedDB，偏好继续使用 localStorage，不请求后端；读取失败或校验失败禁止用默认值覆盖。手稿保存通过原子读写事务比较 revision，防止多页面旧数据覆盖，沿用自动保存、重试和应急副本。导航底部显示红色数据丢失提示与桌面下载链接，两版均显示 GitHub 项目链接。
 - 前端偏好通过 `shared/utils/localSettings.ts` 统一存入 `coinage.settings`，与手稿和操作历史分离；读取须校验并提供默认值，存储异常不阻断界面。造句字格默认开启，关闭时仅隐藏成功匹配字符的字格。
 - 图片导入参数通过 `/api/import-settings` 保存在后端 `data/import-settings.json`，独立于手稿；先加载再编辑，读取失败禁止默认值覆盖，写入串行并采用临时文件原子替换。默认粗细为 24 px；图片按长边适配字格，保留长宽比，提取有效笔迹后保持大小居中；字形缩放使用单条 10–200% 滑条，默认 100%，只缩放节点布局、不缩放笔画粗细，X/Y 偏移使用 -100–100 px 单端滑条；笔画和原图共用受节点边界约束的整体缩放与位移。文件名提取模板同属导入配置，默认 `{desc*}_{name}`，去掉图片扩展名后提取对应汉语和描述；占位符默认尽量少取，末尾加 `*` 可尽量多取，多个字段从左到右匹配，其他字符原样匹配。实时预览与最终导入一致，修改模板不重新描摹；留空直接使用文件名，模板无效或未匹配时提示并回退到完整文件名与空描述。
 - 软件尚未发布，仅支持当前数据结构，不增加历史格式迁移或兼容分支；格式变更同步调整类型、校验和测试。`Project` 不包含名称字段，字符与笔画名称仍保留。
@@ -178,5 +189,6 @@ vite.server.config.ts           # 无第三方运行依赖的服务端打包
 
 - 除非修改构建配置、构建脚本或打包流程，否则不要运行 build 命令；普通业务、界面、样式和文档修改不构建。
 - 构建产物为 `dist/client`、`dist/server`、`dist/runtime`、`双击运行.bat` 和根目录 `Coinage v<版本号>.zip`，运行只需包内 Node。
+- `pnpm run build:web` 只输出 `dist/web/index.html`，内嵌脚本、样式和 Worker，适配 Pages 子路径且不清理桌面产物或用户数据。`.github/workflows/release.yml` 仅推送与 package.json 版本一致的 `v*` tag 时构建、验证、发布桌面 ZIP 与网页 HTML，再更新 Pages。
 - ZIP 按运行文件清单打包，仅附空 `data/`，排除手稿、备份和旧产物；失败保留上一完整 ZIP。JSZip 仅作开发依赖；Node 及 LICENSE 默认取自构建机器，可用 `COINAGE_NODE_PATH` 指定 Windows Node。
 - 资源使用可打包导入，不依赖外网；保留素材及文件名。图片只在浏览器处理，不上传；描摹放 Worker，保留 `new Worker(new URL("./trace.worker.ts", import.meta.url), { type: "module" })`；SVG 导出真实路径。

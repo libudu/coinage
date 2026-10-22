@@ -1,0 +1,84 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+# 多个 tag 同时发布时，按顺序更新 Pages，不中断正在发布的 Release。
+concurrency:
+  group: coinage-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: 校验 tag 版本
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if ($env:RELEASE_TAG -ne "v$version") {
+            throw "Tag $env:RELEASE_TAG 与 package.json 版本 v$version 不一致"
+          }
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 测试
+        run: pnpm test
+      - name: 构建桌面便携包
+        run: pnpm build
+      - name: 验证桌面便携包
+        run: pnpm test:package
+      - name: 构建纯前端单文件版
+        run: pnpm build:web
+      - name: 验证单文件产物
+        run: pnpm test:web
+      - name: 准备单文件下载
+        shell: pwsh
+        run: Copy-Item -LiteralPath dist/web/index.html -Destination "Coinage $env:RELEASE_TAG.html"
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+      - name: 发布 Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $zip = "Coinage $env:RELEASE_TAG.zip"
+          $html = "Coinage $env:RELEASE_TAG.html"
+          if (-not (Test-Path -LiteralPath $zip)) { throw "未找到构建产物：$zip" }
+          gh release create "$env:RELEASE_TAG" --verify-tag --title "Coinage $env:RELEASE_TAG" --generate-notes "$zip" "$html"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 上传 Pages 页面
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 配置 Pages
+        uses: actions/configure-pages@v5
+      - name: 更新 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

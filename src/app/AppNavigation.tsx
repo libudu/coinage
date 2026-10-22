@@ -1,6 +1,11 @@
 import { Button } from "../shared/components/Button";
 import { Icon } from "../shared/components/Icon";
 import { version } from "../../package.json";
+import {
+  desktopDownloadUrl,
+  isWebVersion,
+  repositoryUrl,
+} from "../shared/utils/runtime";
 
 export type WorkspacePage = "library" | "editor" | "styles";
 
@@ -65,6 +70,31 @@ export function AppNavigation({
           </Button>
         ))}
       </nav>
+      <div className="mt-auto flex w-full flex-col items-center gap-[16px] px-[8px]">
+        {isWebVersion && (
+          <p className="text-center text-[11px] leading-[1.7] text-[#c43b35]">
+            数据保存在浏览器，可能丢失，仅供体验。
+            <a
+              className="underline underline-offset-2"
+              href={desktopDownloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              请下载桌面版
+            </a>
+          </p>
+        )}
+        <a
+          href={repositoryUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="GitHub 项目主页"
+          title="GitHub 项目主页"
+          className="grid size-[36px] shrink-0 place-items-center rounded-[9px] text-[#7e897c] hover:bg-[#f0f3ea] hover:text-[#2d4e3b]"
+        >
+          <Icon name="github" size={22} />
+        </a>
+      </div>
     </aside>
   );
 }

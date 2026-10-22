@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./app/App";
 import { Button } from "./shared/components/Button";
 import { projectStorage } from "./features/project/projectStorage";
+import { isWebVersion } from "./shared/utils/runtime";
 import "./styles/index.css";
 
 const container = document.getElementById("root")!;
@@ -23,7 +24,11 @@ try {
     <>
       <p>
         读取手稿失败：
-        {error instanceof Error ? error.message : "请检查本地服务"}
+        {error instanceof Error
+          ? error.message
+          : isWebVersion
+            ? "请检查浏览器存储设置"
+            : "请检查本地服务"}
       </p>
       <Button variant="bare" onClick={() => location.reload()}>
         重试

@@ -6,6 +6,8 @@
 
 Windows 便携包解压后，双击 `双击运行.bat`，浏览器会自动打开工作台，无需安装 Node。使用期间保持命令窗口开启，关闭窗口即可停止服务。
 
+[在线体验](https://libudu.github.io/coinage/)提供相同的造字功能，手稿、原图与导入参数保存在当前浏览器的 IndexedDB，界面偏好保存在 localStorage，无需后端。清理网站数据、浏览器回收空间或更换浏览器、设备都会使体验数据丢失，仅供体验，请从 [Releases](https://github.com/libudu/coinage/releases/latest) 下载桌面版长期使用。两版左侧导航底部均可打开 GitHub 项目主页，体验版另有红色提示与桌面版下载入口。
+
 ## 主要功能
 
 - **字库**：输入句子后展开预览并自动换行，按对应汉语匹配，较长词语优先，缺字显示加深底色和边框的空字格；清空输入收起预览。造句内容自动保存在当前浏览器，下次进入时恢复，清空后也会记住。输入框右侧的字形大小按钮仅显示当前大、中、小，悬停展开菜单切换；相邻图标按钮切换特效和字格；默认显示特效和字格，字形默认为小（原尺寸）。关闭字格后仅隐藏匹配字符的字格，缺字仍保留提示；设置保存在当前浏览器。点击字形进入造字，也可直接右键编辑基本信息、复制或删除，与造字共用菜单和操作。
@@ -42,6 +44,29 @@ pnpm run build
 ```
 
 打包后分发项目根目录的 `Coinage v<版本号>.zip` 即可。
+
+纯前端版本开发与构建：
+
+```bash
+pnpm run dev:web
+pnpm run build:web
+pnpm run test:web
+```
+
+产物为 `dist/web/index.html`，脚本、样式、图片资源和描摹 Worker 全部内嵌，不请求本地 API，可独立托管在 GitHub Pages 的项目子路径。网页手稿沿用一秒自动保存、Ctrl+S、保存失败重试与应急副本；多个页面同时编辑时，旧页面保存会报冲突，避免覆盖新数据。桌面版仍只读写本地服务文件，与体验版数据相互独立。
+
+## GitHub 发布
+
+`.github/workflows/release.yml` 参考 LinAI 的 tag 发布流程，仅在推送 `v*` tag 时运行，普通分支推送不触发构建。tag 必须与 `package.json` 的版本一致，例如当前版本使用 `v0.3.0`。Windows runner 安装指定版本 pnpm，执行测试、桌面打包及便携包验证，再构建并验证纯前端单文件版。Release 同时附带 `Coinage v<版本号>.zip` 和 `Coinage v<版本号>.html`，随后将同一份 HTML 部署至 GitHub Pages。
+
+首次启用时，在仓库 **Settings → Pages → Build and deployment → Source** 选择 **GitHub Actions**，并确保 `github-pages` 环境的部署规则允许版本 tag。推送前先同步版本号，再提交并推送对应 tag：
+
+```bash
+git tag v0.3.0
+git push origin v0.3.0
+```
+
+工作流仅使用仓库自带的 `GITHUB_TOKEN`；无需额外配置发布密钥。构建输出限定在各自子目录，网页构建不会清理桌面版产物或 `dist/data/`。
 
 ## 代码格式
 

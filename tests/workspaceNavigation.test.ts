@@ -94,6 +94,17 @@ function button(container: Element, label: string) {
   assert.ok(element, label);
   return element;
 }
+
+test("桌面导航底部提供 GitHub 新窗口链接，不显示体验版提示", async (t) => {
+  const { container } = await render(t);
+  const link = container.querySelector<HTMLAnchorElement>(
+    'a[aria-label="GitHub 项目主页"]',
+  );
+  assert.equal(link?.href, "https://github.com/libudu/coinage");
+  assert.equal(link?.target, "_blank");
+  assert.equal(link?.rel, "noopener noreferrer");
+  assert.ok(!container.textContent?.includes("仅供体验"));
+});
 async function click(element: HTMLElement) {
   await act(async () => element.click());
 }

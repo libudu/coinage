@@ -1,18 +1,21 @@
 {
   "name": "coinage",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "scripts": {
     "dev": "vite",
+    "dev:web": "vite --mode web",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "build": "tsc --noEmit && vite build && vite build --config vite.server.config.ts && node scripts/package.mjs",
+    "build:web": "tsc --noEmit && vite build --mode web",
     "start": "node dist/server/index.mjs",
     "preview": "node dist/server/index.mjs --no-open",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:package": "node --import tsx --test tests/package.smoke.ts"
+    "test:package": "node --import tsx --test tests/package.smoke.ts",
+    "test:web": "node --import tsx --test tests/webBuild.smoke.ts"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
@@ -32,6 +35,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "fake-indexeddb": "^6.2.6",
     "jsdom": "^26.1.0",
     "jszip": "3.10.1",
     "prettier": "3.9.10",
