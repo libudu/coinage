@@ -37,6 +37,15 @@ pnpm run dev
 
 开发服务默认地址为 `http://127.0.0.1:47832`，端口被占用时会自动尝试后续端口，以终端显示的本地地址为准。
 
+`pnpm install` 会通过 Husky 安装提交检查。提交的作者和提交者姓名均不能包含汉字，检查同时覆盖 Git 配置、环境变量和 `--author`；中文提交说明不受限制。请先为本仓库设置公开使用的身份：
+
+```bash
+git config --local user.name "Your Name"
+git config --local user.email "you@example.com"
+```
+
+`src/prototype/` 仅保留本地原型素材，已通过 `.gitignore` 排除，不被源码、测试或构建引用，也不随源码和分发包发布。
+
 如需生成 Windows 便携包：
 
 ```bash

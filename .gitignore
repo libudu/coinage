@@ -4,6 +4,7 @@ dist/
 /Coinage*.zip
 /Coinage*.html
 data/
+/src/prototype/
 *.local
 *.log
 .env

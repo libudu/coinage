@@ -105,7 +105,7 @@ src/
 ├── styles/
 │   ├── index.css              # Tailwind 入口与保留原边界的断点变体
 │   └── base.css               # 全局重置、主题变量、最小页面宽度与减少动画规则
-└── static/                     # 原始素材：文字/、笔锋/
+└── prototype/                  # 本地原型素材，Git 忽略且不参与运行与构建
 public/reference.png            # 可直接访问的导入示例
 tests/glyphEffects.test.ts      # 连续供燃场、特效参数校验、增量保存与导出隔离测试
 tests/effectInteraction.test.ts # 鼠标速度、气流尾迹与帧率、符文命中、光晕与水墨搅动恢复测试
@@ -133,6 +133,11 @@ tests/support/domLoader.mjs     # 组件测试中的样式导入适配
 tests/package.smoke.ts          # 解压分发 ZIP 后验证便携 Node、重启与端口
 tests/webBuild.smoke.ts         # 单文件 HTML、内嵌 Worker 与后端接口隔离验证
 tests/packageZip.test.ts        # 分发清单、中文文件名、排除手稿与 ZIP 替换测试
+tests/gitIdentity.test.ts       # Husky 实际作者、提交者与中文姓名阻止测试
+scripts/checkGitIdentity.mjs    # 提交作者和提交者姓名的汉字检查
+.husky/pre-commit               # 提交前身份检查
+.husky/prepare-commit-msg       # 提交信息准备阶段复查身份
+.gitattributes                 # 提交钩子固定使用 LF 换行
 scripts/package.mjs             # 复制 Windows Node 与许可证，生成便携目录和版本 ZIP
 scripts/createPackageZip.mjs    # 只打包运行所需文件，保留空 data 目录
 scripts/singleFileHtml.ts       # 将体验版脚本与样式内嵌为单个 HTML 并校验资源
@@ -146,6 +151,7 @@ vite.config.ts                  # 桌面服务与 web 模式的单文件构建�
 
 ### 代码与样式
 
+- `pnpm install` 通过 Husky 安装本地提交检查；作者和提交者姓名均不得含汉字，包含环境变量和 `--author` 覆盖。中文提交说明不受限制，公开身份通过仓库级 Git 配置设置。
 - 使用 pnpm，版本见 `package.json#packageManager`；只维护 `pnpm-lock.yaml`，不生成或提交 `package-lock.json`。文档命令也使用 pnpm。
 - 格式统一使用项目内安装的 Prettier 和根目录 `.prettierrc.json`。每轮修改完成后，必须对本次新增或修改且受 Prettier 支持、未被 `.prettierignore` 忽略的文件执行 `pnpm exec prettier --write <文件路径列表>`，格式化后再执行必要检查；不要顺带格式化无关文件。`pnpm run format` 和 `pnpm run format:check` 分别用于显式的全项目格式化与检查。
 - 使用 TypeScript、显式相对导入和 `import type`；说明性注释用中文。目录变更同步更新测试、README 和本索引。

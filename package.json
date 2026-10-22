@@ -5,6 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@10.32.1",
   "scripts": {
+    "prepare": "husky",
     "dev": "vite",
     "dev:web": "vite --mode web",
     "format": "prettier --write .",
@@ -36,6 +37,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "fake-indexeddb": "^6.2.6",
+    "husky": "^9.1.7",
     "jsdom": "^26.1.0",
     "jszip": "3.10.1",
     "prettier": "3.9.10",

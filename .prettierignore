@@ -1,7 +1,7 @@
 /node_modules/
 /dist/
 /data/
-/src/static/
+/src/prototype/
 /public/
 /pnpm-lock.yaml
 /Coinage*.zip
