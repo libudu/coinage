@@ -1,6 +1,7 @@
 import {
   defaultGlyphEffects,
   defaultInkSettings,
+  defaultSpiderWebSettings,
   defaultProjectStyle,
 } from "../../core/glyphEffects";
 import type { ProjectStyle } from "../../core/glyphEffects";
@@ -490,7 +491,9 @@ export function createProjectStore(initialProject: Project) {
             style.effects.fire = { ...defaultGlyphEffects.fire };
           else if (type === "rune")
             style.effects.rune = { ...defaultGlyphEffects.rune };
-          else style.effects.ink = { ...defaultInkSettings };
+          else if (type === "ink")
+            style.effects.ink = { ...defaultInkSettings };
+          else style.effects.web = { ...defaultSpiderWebSettings };
         });
       },
       changeBrush(patch, transaction) {

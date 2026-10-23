@@ -2,6 +2,7 @@ import {
   defaultProjectStyle,
   defaultInkSettings,
   defaultGlyphEffects,
+  defaultSpiderWebSettings,
   firePalettes,
   runePresets,
 } from "../../core/glyphEffects";
@@ -22,11 +23,15 @@ export function EffectControls() {
     changeStyle((style) => {
       if (style.effects.type === "ink")
         style.effects.ink ??= { ...defaultInkSettings };
+      if (style.effects.type === "web")
+        style.effects.web ??= { ...defaultSpiderWebSettings };
       recipe(style.effects);
     });
   };
   const fire = effects.type === "fire";
   const ink = effects.type === "ink";
+  const web = effects.type === "web";
+  const webSettings = { ...defaultSpiderWebSettings, ...effects.web };
   const settings = fire
     ? effects.fire
     : ink
@@ -38,12 +43,14 @@ export function EffectControls() {
     : ink
       ? (effects.ink ?? defaultInkSettings).disturbance
       : effects.rune.haloWidth;
-  const defaults = fire
-    ? defaultGlyphEffects.fire
-    : ink
-      ? defaultInkSettings
-      : defaultGlyphEffects.rune;
-  const currentSettings: Record<string, unknown> = settings;
+  const defaults = web
+    ? defaultSpiderWebSettings
+    : fire
+      ? defaultGlyphEffects.fire
+      : ink
+        ? defaultInkSettings
+        : defaultGlyphEffects.rune;
+  const currentSettings: Record<string, unknown> = web ? webSettings : settings;
   const isDefault = Object.entries(defaults).every(
     ([key, value]) =>
       (ink ? (currentSettings[key] ?? value) : currentSettings[key]) === value,
@@ -78,11 +85,59 @@ export function EffectControls() {
           { value: "fire", label: "燃烧" },
           { value: "rune", label: "符文" },
           { value: "ink", label: "水墨" },
+          { value: "web", label: "蜘蛛网" },
         ]}
       />
       {effects.type !== "none" && (
         <div className="mt-[20px] flex flex-col gap-[20px]">
-          {fire ? (
+          {web ? (
+            <>
+              <label className="flex items-center justify-between text-[12px] text-[#77856a]">
+                网丝颜色
+                <input
+                  type="color"
+                  aria-label="网丝颜色"
+                  value={webSettings.color}
+                  className="h-[28px] w-[40px] cursor-pointer rounded-[4px] border border-solid border-[#dfe6d4] bg-transparent p-[2px]"
+                  onChange={(event) =>
+                    change((e) => {
+                      e.web!.color = event.target.value;
+                    })
+                  }
+                />
+              </label>
+              {(
+                [
+                  { key: "thickness", label: "线条粗细", min: 25, max: 250 },
+                  { key: "density", label: "蛛网密度", min: 25, max: 200 },
+                  { key: "elasticity", label: "弹性", min: 0, max: 100 },
+                  { key: "propagation", label: "拉力传导", min: 0, max: 200 },
+                ] as const
+              ).map(({ key, label, min, max }) => (
+                <label
+                  key={`web:${key}`}
+                  className="block text-[12px] text-[#77856a]"
+                >
+                  <span className="mb-[10px] flex justify-between">
+                    {label}
+                    <span className="font-mono">{webSettings[key]}%</span>
+                  </span>
+                  <RangeInput
+                    aria-label={label}
+                    min={min}
+                    max={max}
+                    value={webSettings[key]}
+                    onChange={(event) => {
+                      const value = event.currentTarget.valueAsNumber;
+                      change((e) => {
+                        e.web![key] = value;
+                      });
+                    }}
+                  />
+                </label>
+              ))}
+            </>
+          ) : fire ? (
             <div>
               <div className="mb-[10px] text-[12px] text-[#77856a]">
                 火焰配色
@@ -153,7 +208,7 @@ export function EffectControls() {
               </label>
             </>
           ) : null}
-          {!ink && (
+          {!ink && !web && (
             <div className="flex flex-col gap-[10px]">
               <div className="flex items-center justify-between gap-[12px]">
                 <span
@@ -202,65 +257,68 @@ export function EffectControls() {
               </div>
             </div>
           )}
-          {(
-            [
-              {
-                key: "intensity",
-                label: fire ? "火势" : ink ? "晕染浓度" : "辉光强度",
-                min: 20,
-                max: 100,
-              },
-              {
-                key: "speed",
-                label: fire ? "燃烧速度" : ink ? "水流速度" : "流动速度",
-                min: 20,
-                max: 160,
-              },
-            ] as const
-          ).map(({ key, label, min, max }) => (
-            <label
-              key={`${effects.type}:${key}`}
-              className="block text-[12px] text-[#77856a]"
-            >
+          {!web &&
+            (
+              [
+                {
+                  key: "intensity",
+                  label: fire ? "火势" : ink ? "晕染浓度" : "辉光强度",
+                  min: 20,
+                  max: 100,
+                },
+                {
+                  key: "speed",
+                  label: fire ? "燃烧速度" : ink ? "水流速度" : "流动速度",
+                  min: 20,
+                  max: 160,
+                },
+              ] as const
+            ).map(({ key, label, min, max }) => (
+              <label
+                key={`${effects.type}:${key}`}
+                className="block text-[12px] text-[#77856a]"
+              >
+                <span className="mb-[10px] flex justify-between">
+                  {label}
+                  <span className="font-mono">{settings[key]}%</span>
+                </span>
+                <RangeInput
+                  aria-label={label}
+                  min={min}
+                  max={max}
+                  value={settings[key]}
+                  onChange={(event) => {
+                    const value = event.currentTarget.valueAsNumber;
+                    change((e) => {
+                      (ink ? e.ink! : e[fire ? "fire" : "rune"])[key] = value;
+                    });
+                  }}
+                />
+              </label>
+            ))}
+          {!web && (
+            <label className="block text-[12px] text-[#77856a]">
               <span className="mb-[10px] flex justify-between">
-                {label}
-                <span className="font-mono">{settings[key]}%</span>
+                {interactionLabel}
+                <span className="font-mono">{interactionValue}%</span>
               </span>
               <RangeInput
-                aria-label={label}
-                min={min}
-                max={max}
-                value={settings[key]}
+                key={`${effects.type}:interaction`}
+                aria-label={interactionLabel}
+                min={fire || ink ? 0 : 10}
+                max={100}
+                value={interactionValue}
                 onChange={(event) => {
                   const value = event.currentTarget.valueAsNumber;
                   change((e) => {
-                    (ink ? e.ink! : e[fire ? "fire" : "rune"])[key] = value;
+                    if (fire) e.fire.disturbance = value;
+                    else if (ink) e.ink!.disturbance = value;
+                    else e.rune.haloWidth = value;
                   });
                 }}
               />
             </label>
-          ))}
-          <label className="block text-[12px] text-[#77856a]">
-            <span className="mb-[10px] flex justify-between">
-              {interactionLabel}
-              <span className="font-mono">{interactionValue}%</span>
-            </span>
-            <RangeInput
-              key={`${effects.type}:interaction`}
-              aria-label={interactionLabel}
-              min={fire || ink ? 0 : 10}
-              max={100}
-              value={interactionValue}
-              onChange={(event) => {
-                const value = event.currentTarget.valueAsNumber;
-                change((e) => {
-                  if (fire) e.fire.disturbance = value;
-                  else if (ink) e.ink!.disturbance = value;
-                  else e.rune.haloWidth = value;
-                });
-              }}
-            />
-          </label>
+          )}
           {ink &&
             (
               [

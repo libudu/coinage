@@ -4,6 +4,9 @@ import {
   Container,
   Filter,
   GlProgram,
+  Mesh,
+  MeshGeometry,
+  Shader,
   Sprite,
   Texture,
 } from "pixi.js";
@@ -13,9 +16,10 @@ import { glyphPath } from "../../core/geometry";
 import {
   defaultGlyphEffects,
   defaultInkSettings,
+  defaultSpiderWebSettings,
   firePalettes,
 } from "../../core/glyphEffects";
-import type { GlyphEffects } from "../../core/glyphEffects";
+import type { GlyphEffects, SpiderWebSettings } from "../../core/glyphEffects";
 import type { Glyph } from "../../core/model";
 import { effectFragment, effectVertex } from "./effectShaders";
 import { buildFlameField, flameFieldScale, flameFieldSize } from "./flameField";
@@ -32,6 +36,11 @@ import {
 } from "./runeEffect";
 import type { EffectBounds } from "./effectInteraction";
 import type { RuneRipple } from "./runeEffect";
+import {
+  buildSpiderWeb,
+  createSpiderWeb,
+  drawSpiderWeb,
+} from "./spiderWebEffect";
 
 type GlyphTexture = {
   canvas: HTMLCanvasElement;
@@ -40,6 +49,7 @@ type GlyphTexture = {
   flame: Texture | null;
   direction: number;
   references: number;
+  web?: ReturnType<typeof createWebTexture>;
 };
 
 type Entry = {
@@ -54,7 +64,95 @@ type Entry = {
   airflow: ReturnType<typeof createFireAirflow>;
   ripples: RuneRipple[];
   ink: ReturnType<typeof createInkTexture> | null;
+  web: ReturnType<typeof createWebMesh> | null;
 };
+
+function createWebTexture(mask: GlyphTexture) {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1024;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("无法创建蜘蛛网纹理");
+  const texture = Texture.from(canvas);
+  let appearance = "",
+    density = -1;
+  let geometry: ReturnType<typeof buildSpiderWeb>;
+  return {
+    texture,
+    update(next: SpiderWebSettings) {
+      const key = `${next.color}:${next.thickness}:${next.density}`;
+      if (appearance === key) return;
+      if (density !== next.density) {
+        geometry = buildSpiderWeb(mask.pixels, mask.canvas.width, next.density);
+        density = next.density;
+      }
+      drawSpiderWeb(context, geometry, next);
+      texture.source.update();
+      appearance = key;
+    },
+  };
+}
+
+function createWebMesh(mask: GlyphTexture) {
+  mask.web ??= createWebTexture(mask);
+  const flow = createSpiderWeb(mask.pixels, mask.canvas.width);
+  const geometry = new MeshGeometry({
+    positions: flow.positions,
+    uvs: flow.rest,
+    indices: flow.indices,
+  });
+  // 独立纹理绑定随实例释放，避免共享默认网格着色器继续引用已销毁的纹理。
+  const shader = Shader.from({
+    gl: {
+      name: "coinage-spider-web",
+      vertex: `
+        in vec2 aPosition;
+        in vec2 aUV;
+        uniform mat3 uProjectionMatrix;
+        uniform mat3 uWorldTransformMatrix;
+        uniform mat3 uTransformMatrix;
+        uniform vec4 uWorldColorAlpha;
+        uniform vec4 uColor;
+        out vec2 vUV;
+        out vec4 vColor;
+        void main() {
+          vec3 position = uProjectionMatrix * uWorldTransformMatrix * uTransformMatrix * vec3(aPosition, 1.0);
+          gl_Position = vec4(position.xy, 0.0, 1.0);
+          vUV = aUV;
+          vColor = uWorldColorAlpha * uColor;
+        }
+      `,
+      fragment: `
+        in vec2 vUV;
+        in vec4 vColor;
+        uniform sampler2D uTexture;
+        out vec4 finalColor;
+        void main() { finalColor = texture(uTexture, vUV) * vColor; }
+      `,
+    },
+    resources: { uTexture: mask.web.texture.source },
+  });
+  const mesh = new Mesh({ texture: mask.web.texture, geometry, shader });
+  return {
+    mesh,
+    flow,
+    update(delta: number, settings: SpiderWebSettings, force = false) {
+      if (
+        flow.update(
+          delta,
+          settings.elasticity,
+          settings.propagation ?? defaultSpiderWebSettings.propagation,
+        ) ||
+        force
+      )
+        geometry.getBuffer("aPosition").update();
+    },
+    destroy() {
+      mesh.destroy();
+      shader.destroy();
+      geometry.destroy(true);
+    },
+  };
+}
 
 function createInkTexture(mask: HTMLCanvasElement) {
   const canvas = document.createElement("canvas");
@@ -147,11 +245,28 @@ export async function createEffectScene(host: HTMLElement) {
   let inView = true;
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const pointer = createEffectPointer();
+  let webDrag: { entry: Entry; pointerId: number } | null = null;
+  const webSettings = () => effects.web ?? defaultSpiderWebSettings;
+  const webPoint = (event: PointerEvent, entry: Entry) => ({
+    x: (event.clientX - entry.bounds.x) / entry.bounds.size,
+    y: (event.clientY - entry.bounds.y) / entry.bounds.size,
+  });
+  const releaseWeb = (event?: PointerEvent) => {
+    if (!webDrag || (event && event.pointerId !== webDrag.pointerId)) return;
+    webDrag.entry.web?.flow.release();
+    webDrag = null;
+    delete host.dataset.webDragging;
+    if (canInteract()) app.start();
+  };
   const canInteract = () =>
     !destroyed && !document.hidden && inView && !reducedMotion.matches;
   const updateInteraction = (delta: number) => {
     const now = performance.now();
     for (const entry of entries.values()) {
+      if (effects.type === "web") {
+        entry.web?.update(delta, webSettings());
+        continue;
+      }
       const uniforms = entry.filter.resources.effectUniforms.uniforms;
       const frame = pointer.frame(entry.bounds, now);
       if (effects.type === "fire") entry.airflow.update(frame.pointer, delta);
@@ -176,11 +291,16 @@ export async function createEffectScene(host: HTMLElement) {
     }
   };
   const resetInteraction = () => {
+    releaseWeb();
     pointer.reset();
     for (const entry of entries.values()) {
       entry.tilt.fill(0);
       entry.airflow.reset();
       entry.ripples = [];
+      if (entry.web) {
+        entry.web.flow.reset();
+        entry.web.update(0, webSettings(), true);
+      }
       if (entry.ink) {
         entry.ink.flow.reset();
         entry.ink.upload();
@@ -190,10 +310,44 @@ export async function createEffectScene(host: HTMLElement) {
   };
   const movePointer = (event: PointerEvent) => {
     if (!canInteract() || event.pointerType === "touch") return;
-    pointer.move(event.clientX, event.clientY, performance.now());
+    if (webDrag?.pointerId === event.pointerId) {
+      webDrag.entry.web?.flow.move(webPoint(event, webDrag.entry));
+      app.start();
+    }
+    if (effects.type !== "web")
+      pointer.move(event.clientX, event.clientY, performance.now());
+  };
+  const grabWeb = (event: PointerEvent) => {
+    if (
+      !canInteract() ||
+      effects.type !== "web" ||
+      event.button !== 0 ||
+      event.pointerType === "touch" ||
+      webDrag
+    )
+      return;
+    for (const entry of entries.values()) {
+      if (!entry.web) continue;
+      const point = webPoint(event, entry);
+      if (
+        !entry.web.flow.grab(
+          point,
+          webSettings().propagation ?? defaultSpiderWebSettings.propagation,
+        )
+      )
+        continue;
+      webDrag = { entry, pointerId: event.pointerId };
+      host.dataset.webDragging = "true";
+      app.start();
+      event.preventDefault();
+      break;
+    }
   };
   const leaveWindow = (event: PointerEvent) => {
-    if (!event.relatedTarget) pointer.reset();
+    if (!event.relatedTarget) {
+      pointer.reset();
+      releaseWeb(event);
+    }
   };
   const clickRune = (event: MouseEvent) => {
     if (!canInteract() || effects.type !== "rune" || event.button !== 0) return;
@@ -228,7 +382,9 @@ export async function createEffectScene(host: HTMLElement) {
       }
   };
   const dispose = (element: HTMLElement, entry: Entry) => {
+    if (webDrag?.entry === entry) releaseWeb();
     delete element.dataset.effectReady;
+    entry.web?.destroy();
     entry.container.destroy({ children: true });
     entry.filter.destroy();
     entry.glow.destroy();
@@ -236,6 +392,7 @@ export async function createEffectScene(host: HTMLElement) {
     if (--entry.textures.references === 0) {
       entry.textures.mask.destroy(true);
       entry.textures.flame?.destroy(true);
+      entry.textures.web?.texture.destroy(true);
       textures.delete(entry.path);
     }
     entries.delete(element);
@@ -346,6 +503,7 @@ export async function createEffectScene(host: HTMLElement) {
           airflow,
           ripples: [],
           ink: null,
+          web: null,
         };
         entries.set(element, entry);
       }
@@ -353,6 +511,20 @@ export async function createEffectScene(host: HTMLElement) {
       const effect = effects;
       const fire = effect.type === "fire";
       const ink = effect.type === "ink";
+      const web = effect.type === "web";
+      if (web) {
+        if (!entry.web) {
+          entry.web = createWebMesh(entry.textures);
+          entry.container.addChild(entry.web.mesh);
+        }
+        entry.textures.web!.update(webSettings());
+      }
+      entry.sprite.visible = !web;
+      entry.sprite.filters = web ? [] : [entry.filter];
+      if (!web && entry.web) {
+        entry.web.destroy();
+        entry.web = null;
+      }
       const settings = fire
         ? effect.fire
         : ink
@@ -368,7 +540,7 @@ export async function createEffectScene(host: HTMLElement) {
         entry.ink.texture.destroy(true);
         entry.ink = null;
       }
-      entry.container.filters = ink ? [] : [entry.glow];
+      entry.container.filters = ink || web ? [] : [entry.glow];
       if (
         fire &&
         (!entry.textures.flame || entry.textures.direction !== direction)
@@ -410,6 +582,7 @@ export async function createEffectScene(host: HTMLElement) {
         size,
       };
       entry.sprite.width = entry.sprite.height = size;
+      entry.web?.mesh.scale.set(size);
       entry.container.position.set(
         box.left - rect.left - box.width * 0.125 + 32,
         box.top - rect.top - box.height * 0.125 - top + 32,
@@ -431,13 +604,24 @@ export async function createEffectScene(host: HTMLElement) {
     updateInteraction(delta);
     for (const entry of entries.values())
       entry.filter.resources.effectUniforms.uniforms.uTime = time;
+    if (
+      effects.type === "web" &&
+      !Array.from(entries.values()).some((entry) => entry.web?.flow.active)
+    )
+      app.stop();
   };
   app.ticker.maxFPS = 40;
   app.ticker.add(tick);
   const syncPlayback = () => {
     if (destroyed) return;
-    if (!document.hidden && inView && !reducedMotion.matches) app.start();
-    else {
+    if (!document.hidden && inView && !reducedMotion.matches) {
+      if (
+        effects.type !== "web" ||
+        Array.from(entries.values()).some((entry) => entry.web?.flow.active)
+      )
+        app.start();
+      else app.stop();
+    } else {
       app.stop();
       resetInteraction();
       app.render();
@@ -453,10 +637,12 @@ export async function createEffectScene(host: HTMLElement) {
   window.addEventListener("scroll", layout, true);
   window.addEventListener("resize", layout);
   window.addEventListener("pointermove", movePointer, { passive: true });
+  window.addEventListener("pointerup", releaseWeb);
   window.addEventListener("pointerout", leaveWindow);
   window.addEventListener("pointercancel", resetInteraction);
   window.addEventListener("blur", resetInteraction);
   host.addEventListener("click", clickRune);
+  host.addEventListener("pointerdown", grabWeb);
   document.addEventListener("visibilitychange", syncPlayback);
   reducedMotion.addEventListener("change", syncPlayback);
   syncPlayback();
@@ -470,11 +656,15 @@ export async function createEffectScene(host: HTMLElement) {
       brush = nextBrush;
       if (effects.type !== nextEffects.type) resetInteraction();
       effects = nextEffects;
+      host.dataset.webEffect = effects.type === "web" ? "true" : "false";
       layout();
+      syncPlayback();
     },
     destroy() {
       if (destroyed) return;
       destroyed = true;
+      releaseWeb();
+      delete host.dataset.webEffect;
       app.stop();
       releaseFilterInputs();
       resize.disconnect();
@@ -482,10 +672,12 @@ export async function createEffectScene(host: HTMLElement) {
       window.removeEventListener("scroll", layout, true);
       window.removeEventListener("resize", layout);
       window.removeEventListener("pointermove", movePointer);
+      window.removeEventListener("pointerup", releaseWeb);
       window.removeEventListener("pointerout", leaveWindow);
       window.removeEventListener("pointercancel", resetInteraction);
       window.removeEventListener("blur", resetInteraction);
       host.removeEventListener("click", clickRune);
+      host.removeEventListener("pointerdown", grabWeb);
       document.removeEventListener("visibilitychange", syncPlayback);
       reducedMotion.removeEventListener("change", syncPlayback);
       for (const [element, entry] of entries) dispose(element, entry);

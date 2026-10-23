@@ -7,3 +7,13 @@
 .glyph-effects-preview [data-effect-ready="true"] > svg {
   opacity: 0;
 }
+
+.glyph-effects-preview[data-web-effect="true"] [data-effect-ready="true"] {
+  cursor: grab;
+  user-select: none;
+}
+
+.glyph-effects-preview[data-web-dragging="true"],
+.glyph-effects-preview[data-web-dragging="true"] [data-effect-ready="true"] {
+  cursor: grabbing;
+}

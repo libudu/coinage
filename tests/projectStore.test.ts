@@ -11,6 +11,7 @@ import { defaultBrush } from "../src/core/brush";
 import {
   defaultGlyphEffects,
   defaultInkSettings,
+  defaultSpiderWebSettings,
   defaultProjectStyle,
 } from "../src/core/glyphEffects";
 
@@ -31,11 +32,17 @@ function setup() {
 }
 
 test("resetting effect settings persists without adding editor history or invalidating redo", () => {
-  for (const type of ["fire", "rune", "ink"] as const) {
+  for (const type of ["fire", "rune", "ink", "web"] as const) {
     const project = manuscript();
     project.style = structuredClone(defaultProjectStyle);
     project.style.color = "#123456";
     project.style.effects.type = type;
+    project.style.effects.web = {
+      color: "#123abc",
+      thickness: 180,
+      density: 150,
+      elasticity: 90,
+    };
     project.style.effects.fire = {
       ...defaultGlyphEffects.fire,
       palette: "azure",
@@ -69,7 +76,8 @@ test("resetting effect settings persists without adding editor history or invali
       expected.effects.fire = { ...defaultGlyphEffects.fire };
     else if (type === "rune")
       expected.effects.rune = { ...defaultGlyphEffects.rune };
-    else expected.effects.ink = { ...defaultInkSettings };
+    else if (type === "ink") expected.effects.ink = { ...defaultInkSettings };
+    else expected.effects.web = { ...defaultSpiderWebSettings };
     actions.resetEffect();
     assert.deepEqual(store.getState().project.style, expected);
     assert.equal(store.getState().committedProject, store.getState().project);

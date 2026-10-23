@@ -1,5 +1,6 @@
 export type GlyphEffects = {
-  type: "none" | "fire" | "rune" | "ink";
+  type: "none" | "fire" | "rune" | "ink" | "web";
+  web?: SpiderWebSettings;
   ink?: InkSettings;
   fire: {
     palette: "ember" | "azure" | "jade" | "ashen";
@@ -24,6 +25,22 @@ export type InkSettings = {
   disturbance: number;
   stirSize?: number;
   diffusionRange?: number;
+};
+
+export type SpiderWebSettings = {
+  color: string;
+  thickness: number;
+  density: number;
+  elasticity: number;
+  propagation?: number;
+};
+
+export const defaultSpiderWebSettings: SpiderWebSettings = {
+  color: "#000000",
+  thickness: 100,
+  density: 100,
+  elasticity: 50,
+  propagation: 100,
 };
 
 export const defaultInkSettings = {
@@ -100,7 +117,16 @@ export function isGlyphEffects(value: unknown): value is GlyphEffects {
     amount >= min &&
     amount <= max;
   return (
-    ["none", "fire", "rune", "ink"].includes(effect.type) &&
+    ["none", "fire", "rune", "ink", "web"].includes(effect.type) &&
+    (effect.web === undefined ||
+      (!!effect.web &&
+        typeof effect.web.color === "string" &&
+        /^#[0-9a-f]{6}$/i.test(effect.web.color) &&
+        validAmount(effect.web.thickness, 25, 250) &&
+        validAmount(effect.web.density, 25, 200) &&
+        validAmount(effect.web.elasticity, 0, 100) &&
+        (effect.web.propagation === undefined ||
+          validAmount(effect.web.propagation, 0, 200)))) &&
     (effect.ink === undefined ||
       (!!effect.ink &&
         validAmount(effect.ink.intensity, 20, 100) &&

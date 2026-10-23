@@ -9,7 +9,10 @@ import type { Project } from "../src/core/model";
 import { glyphPath, outlinePath } from "../src/core/geometry";
 import { isProject } from "../src/core/validation";
 import { defaultBrush } from "../src/core/brush";
-import { defaultGlyphEffects } from "../src/core/glyphEffects";
+import {
+  defaultGlyphEffects,
+  defaultSpiderWebSettings,
+} from "../src/core/glyphEffects";
 import { projectStorage } from "../src/features/project/projectStorage";
 
 register("./support/domLoader.mjs", import.meta.url);
@@ -786,6 +789,89 @@ test("style controls and their focused undo keys preserve editor redo and keep t
   await key("s", true);
   assert.deepEqual(saved.at(-1)!.glyphs, project.glyphs);
   assert.deepEqual(saved.at(-1)!.style, expectedStyle);
+});
+
+test("spider web controls save, retain separate parameters and reset without affecting editor redo", async (t) => {
+  const { container, saved, project } = await render(t);
+  await click(button(container, "编辑 甲"));
+  await key("a", true);
+  await key("ArrowRight");
+  await key("s", true);
+  const edited = saved.at(-1)!.glyphs;
+  await key("z", true);
+  await click(button(container, "样式"));
+  const page = container.querySelector<HTMLElement>('main[aria-label="样式"]')!;
+  await click(button(page, "蜘蛛网"));
+  assert.equal(button(page, "蜘蛛网").getAttribute("aria-pressed"), "true");
+  assert.equal(button(page, "恢复当前特效默认配置").disabled, true);
+  assert.equal(page.querySelector('input[aria-label="流光方向"]'), null);
+  assert.equal(page.querySelector('input[aria-label="光晕粗细"]'), null);
+  assert.equal(
+    page.querySelector<HTMLInputElement>('input[aria-label="蛛网密度"]')!.value,
+    "100",
+  );
+  assert.equal(
+    page.querySelector<HTMLInputElement>('input[aria-label="弹性"]')!.value,
+    "50",
+  );
+  assert.equal(
+    page.querySelector<HTMLInputElement>('input[aria-label="拉力传导"]')!.value,
+    "100",
+  );
+  for (const [label, min, max, value] of [
+    ["线条粗细", "25", "250", "150"],
+    ["蛛网密度", "25", "200", "75"],
+    ["弹性", "0", "100", "90"],
+    ["拉力传导", "0", "200", "150"],
+  ]) {
+    const slider = page.querySelector<HTMLInputElement>(
+      `input[aria-label="${label}"]`,
+    )!;
+    assert.equal(slider.min, min);
+    assert.equal(slider.max, max);
+    await inputValue(slider, value);
+  }
+  const color = page.querySelector<HTMLInputElement>(
+    'input[aria-label="网丝颜色"]',
+  )!;
+  assert.equal(color.value, "#000000");
+  await inputValue(color, "#90abcd");
+  await key("s", true);
+  const settings = {
+    color: "#90abcd",
+    thickness: 150,
+    density: 75,
+    elasticity: 90,
+    propagation: 150,
+  };
+  assert.deepEqual(saved.at(-1)!.style!.effects.web, settings);
+  assert.equal(isProject(saved.at(-1)), true);
+  await click(button(page, "燃烧"));
+  await click(button(page, "蜘蛛网"));
+  assert.equal(
+    page.querySelector<HTMLInputElement>('input[aria-label="蛛网密度"]')!.value,
+    "75",
+  );
+  await click(button(container, "字库"));
+  await inputValue(library(container).querySelector("input")!, "甲乙甲");
+  assert.equal(
+    library(container).querySelectorAll(
+      '[aria-label="句子预览"] [data-effect-glyph]',
+    ).length,
+    3,
+  );
+  await click(button(container, "造字"));
+  await key("y", true);
+  await key("s", true);
+  assert.deepEqual(saved.at(-1)!.glyphs, edited);
+  assert.deepEqual(saved.at(-1)!.style!.effects.web, settings);
+  await click(button(container, "样式"));
+  await click(button(page, "恢复当前特效默认配置"));
+  await key("s", true);
+  assert.deepEqual(saved.at(-1)!.style!.effects.web, defaultSpiderWebSettings);
+  assert.equal(saved.at(-1)!.style!.effects.type, "web");
+  assert.equal(button(page, "恢复当前特效默认配置").disabled, true);
+  assert.deepEqual(saved.at(-1)!.glyphs, edited);
 });
 
 test("ink controls save independent settings, retain them across switches and use the sentence preview", async (t) => {

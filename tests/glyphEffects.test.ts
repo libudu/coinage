@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   defaultGlyphEffects,
   defaultInkSettings,
+  defaultSpiderWebSettings,
   defaultProjectStyle,
   isGlyphEffects,
   isProjectStyle,
@@ -18,6 +19,89 @@ import {
 import { isProject } from "../src/core/validation";
 import { exportSvg } from "../src/core/svg";
 import { buildFlameField } from "../src/features/styles/flameField";
+
+test("spider web settings validate, save as independent style fields and leave exports and geometry intact", () => {
+  const before = demoProject();
+  before.style = structuredClone(defaultProjectStyle);
+  before.style.effects.web = { ...defaultSpiderWebSettings };
+  const next = structuredClone(before);
+  next.style!.effects.type = "web";
+  next.style!.effects.web = {
+    color: "#90abcd",
+    thickness: 150,
+    density: 75,
+    elasticity: 90,
+    propagation: 150,
+  };
+  assert.equal(isProject(next), true);
+  const patch = createProjectPatch(before, next);
+  assert.ok(patch.every((p) => p.path[0] === "style"));
+  assert.deepEqual(applyProjectPatch(before, patch), next);
+  assert.deepEqual(next.glyphs, before.glyphs);
+  assert.equal(
+    exportSvg(next.glyphs[0], next.brush, next.style!.color),
+    exportSvg(before.glyphs[0], before.brush, before.style.color),
+  );
+  for (const [key, min, max] of [
+    ["thickness", 25, 250],
+    ["density", 25, 200],
+    ["elasticity", 0, 100],
+    ["propagation", 0, 200],
+  ] as const) {
+    for (const value of [min, max])
+      assert.equal(
+        isGlyphEffects({
+          ...defaultGlyphEffects,
+          type: "web",
+          web: { ...defaultSpiderWebSettings, [key]: value },
+        }),
+        true,
+      );
+    for (const value of [
+      min - 1,
+      max + 1,
+      NaN,
+      Infinity,
+      "50",
+      ...(key === "propagation" ? [] : [undefined]),
+      null,
+    ])
+      assert.equal(
+        isGlyphEffects({
+          ...defaultGlyphEffects,
+          web: { ...defaultSpiderWebSettings, [key]: value },
+        }),
+        false,
+      );
+  }
+  for (const color of ["white", "#fff", "#ffffff00", "#gggggg", null])
+    assert.equal(
+      isGlyphEffects({
+        ...defaultGlyphEffects,
+        web: { ...defaultSpiderWebSettings, color },
+      }),
+      false,
+    );
+  assert.equal(isGlyphEffects({ ...defaultGlyphEffects, web: null }), false);
+  assert.equal(isGlyphEffects({ ...defaultGlyphEffects, type: "web" }), true);
+  assert.equal(
+    isGlyphEffects({
+      ...defaultGlyphEffects,
+      web: { ...defaultSpiderWebSettings, propagation: undefined },
+    }),
+    true,
+  );
+  const propagated = structuredClone(before);
+  propagated.style!.effects.web!.propagation = 150;
+  assert.deepEqual(createProjectPatch(before, propagated), [
+    { op: "set", path: ["style", "effects", "web", "propagation"], value: 150 },
+  ]);
+  assert.throws(() =>
+    applyProjectPatch(before, [
+      { op: "set", path: ["style", "effects", "web", "density"], value: 201 },
+    ]),
+  );
+});
 
 test("flame fuel rises continuously from ink without leaking below or into empty columns", () => {
   const size = 100;
@@ -157,7 +241,7 @@ test("separate strokes restart flame height at their own roots and empty masks s
 
 test("effects reject invalid palettes, colors, non-finite and out-of-range parameters", () => {
   assert.equal(isGlyphEffects(defaultGlyphEffects), true);
-  for (const type of ["none", "fire", "rune", "ink"]) {
+  for (const type of ["none", "fire", "rune", "ink", "web"]) {
     assert.equal(isGlyphEffects({ ...defaultGlyphEffects, type }), true);
   }
   for (const value of [
